@@ -9,6 +9,7 @@ from conftest import needs_ffmpeg, run_ffmpeg
 
 from scenefold.audio_offset import measure_offset
 from scenefold.cli import main
+from scenefold.evaluate import evaluate_event, moments_from_offsets
 from scenefold.ingest import ingest
 from scenefold.sync import NOT_MATCHED, SyncError, solve_timeline, sync_event
 from scenefold.timeline import TIMELINE_NAME, PairMeasurement, SyncSettings, load_timeline
@@ -260,6 +261,22 @@ def test_event_clips_land_on_their_true_offsets(synced_event):
 
     on_disk = load_timeline(data_dir / event)
     assert on_disk == timeline
+
+
+@needs_ffmpeg
+def test_synced_event_matches_the_truth_within_a_few_milliseconds(synced_event, tmp_path, capsys):
+    data_dir, event = synced_event
+    sync_event(event, data_dir=data_dir)
+    durations = {"phone_a.mp4": 20.0, "phone_b.mp4": 22.0, "phone_c.mp4": 20.0}
+    truth = moments_from_offsets(TRUE_OFFSETS, durations, every_s=2.0)
+    truth_path = tmp_path / "truth.json"
+    truth_path.write_text(truth.model_dump_json(), encoding="utf-8")
+
+    assert main(["evaluate", event, str(truth_path), "--data-dir", str(data_dir)]) == 0
+    assert "within one frame (33 ms): " in capsys.readouterr().out
+    result = evaluate_event(event, truth_path, data_dir=data_dir)
+    assert len(result.errors) >= 10
+    assert abs(result.worst.error_ms) < 5
 
 
 @needs_ffmpeg

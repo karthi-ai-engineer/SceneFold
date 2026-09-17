@@ -1,4 +1,5 @@
-"""Command line: `scenefold ingest <event> <videos or folders>` and `scenefold sync <event>`."""
+"""Command line: `scenefold ingest <event> <videos or folders>`, `scenefold sync <event>`, and
+`scenefold evaluate <event> <ground truth>`."""
 
 import argparse
 import sys
@@ -6,6 +7,7 @@ from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
+from scenefold.evaluate import FRAME_S, EvaluationError, evaluate_event
 from scenefold.ingest import IngestError, InputResult, Outcome, ingest
 from scenefold.sync import SyncError, sync_event
 from scenefold.timeline import TIMELINE_NAME, Timeline
@@ -57,9 +59,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=Path("data"),
         help="folder that holds event workspaces (default: ./data)",
     )
+    evaluate_parser = commands.add_parser(
+        "evaluate",
+        help="measure sync error against ground truth",
+        description="Compare an event's timeline.json with ground truth: moments such as claps "
+        "and their clip time in every clip that caught them. Reports how many milliseconds apart "
+        "each pair of clips puts the same moment.",
+    )
+    evaluate_parser.add_argument("event", help="event name used with sync, e.g. match-01")
+    evaluate_parser.add_argument("truth", type=Path, help="ground truth JSON file")
+    evaluate_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="folder that holds event workspaces (default: ./data)",
+    )
     args = parser.parse_args(argv)
     _safe_console()
-    return _run_sync(args) if args.command == "sync" else _run_ingest(args)
+    run = {"ingest": _run_ingest, "sync": _run_sync, "evaluate": _run_evaluate}
+    return run[args.command](args)
 
 
 def _run_ingest(args: argparse.Namespace) -> int:
@@ -115,6 +133,33 @@ def _print_timeline(timeline: Timeline) -> None:
     parts = [f"{len(timeline.pairs)} measured", f"{sum(p.used for p in timeline.pairs)} used"]
     parts += [f"{count} {reason}" for reason, count in sorted(rejected.items())]
     print(f"Pairs: {', '.join(parts)}")
+
+
+def _run_evaluate(args: argparse.Namespace) -> int:
+    try:
+        result = evaluate_event(args.event, args.truth, data_dir=args.data_dir)
+    except EvaluationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    moments = len({error.moment for error in result.errors})
+    print(f"Event {result.event_id}: {len(result.errors)} pair errors at {moments} moments")
+    if result.not_placed:
+        print(f"  not placed: {', '.join(result.not_placed)}")
+    worst = result.worst
+    if worst is None:
+        print("  no two placed clips caught the same moment, so nothing could be compared")
+        return 1
+    print(
+        f"  error median {result.median_ms:.1f} ms, 95th percentile {result.p95_ms:.1f} ms, "
+        f"worst {worst.error_ms:+.1f} ms ({worst.clip_a} and {worst.clip_b} at {worst.moment})"
+    )
+    frame_ms = FRAME_S * 1000
+    share = result.within_frame / len(result.errors)
+    print(
+        f"  within one frame ({frame_ms:.0f} ms): {result.within_frame} of {len(result.errors)} "
+        f"({share:.0%})"
+    )
+    return 0
 
 
 def _print_progress(number: int, total: int, path: Path, result: InputResult | None) -> None:
