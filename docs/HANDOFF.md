@@ -142,3 +142,9 @@ uv run pytest                      # expect 167 passed
 5. Started **Phase 2 sync** on `phase-2-sync` with two parallel agents: pair measurement and the
    solver + `scenefold sync`. 167 tests green on CI.
 6. Wrote this handoff for the move to the Predator.
+7. Karthi asked whether this already exists. Researched products, research, and investigative
+   practice: `docs/RELATED_WORK.md`. Pieces exist (editor audio sync, podcast auto-switching,
+   research on cited multi-video stories); the end-to-end chain for crowd phone footage does not.
+8. Suggested test footage: first a home recording (3 phones, claps at start/middle/end, staggered
+   starts, portrait + landscape); then 3+ original (not WhatsApp/Instagram) clips of the same moment
+   of a Tamil concert; a cricket game later (far-apart phones, sound delay). Footage stays in `data/`.
