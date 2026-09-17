@@ -64,7 +64,7 @@ def measure_offset(
     beta: float = 0.8,
     min_overlap_s: float = 5.0,
     window_s: float = 10.0,
-    max_drift_ppm: float = 200.0,
+    max_drift_ppm: float = 1000.0,
 ) -> OffsetMeasurement | None:
     """None when the two recordings can't overlap by at least min_overlap_s at any lag."""
     a, b = _prepare(a), _prepare(b)

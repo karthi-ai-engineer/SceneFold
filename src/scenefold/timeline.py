@@ -4,7 +4,8 @@ Every placed clip gets an `offset_s`: where its clip time 0 sits on the master t
 clock). Master time 0 is the start of the earliest placed clip. Phone clocks run slightly fast or
 slow, so each clip also gets a `drift_ppm`: how much faster its clock ran than the master clock, in
 parts per million (the master clock is the average of the clips whose drift could be measured;
-None counts as 0). The two times convert as:
+None counts as 0). Drift is measured from the sound; a phone's picture usually runs within a few
+ppm of its sound, but not on every device. The two times convert as:
 
     t_local  = (t_master - offset_s) * (1 + drift_ppm / 1e6)
     t_master = offset_s + t_local / (1 + drift_ppm / 1e6)
@@ -36,7 +37,7 @@ class SyncSettings(BaseModel):
     min_confidence: float = Field(2.0, gt=0)  # pairs below this are not used
     max_residual_ms: float = Field(20.0, gt=0)  # pairs disagreeing more than this are dropped
     window_s: float = Field(10.0, gt=0)  # drift is measured from windows of this length
-    max_drift_ppm: float = Field(200.0, ge=0)  # clock drift beyond this is not searched for
+    max_drift_ppm: float = Field(1000.0, ge=0)  # clock drift beyond this is not searched for
 
 
 class PairMeasurement(BaseModel):
