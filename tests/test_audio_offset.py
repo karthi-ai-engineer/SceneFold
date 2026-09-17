@@ -190,6 +190,24 @@ def test_clock_drift_is_measured_and_cancelled(long_event, seconds, ppm):
     assert measured.confidence > 0.7 * reference.confidence
 
 
+def test_strong_drift_in_loud_noise_is_found_from_one_minute_pieces(long_event):
+    # 460 ppm drifts 138 ms over 300 s: the whole-clip match smears into the noise (confidence ~1)
+    a = record(long_event, Phone(0.0, 320, snr_db=0, echo=0.5, seed=1), ANALYSIS_RATE)
+    b = record(long_event, Phone(10.0, 300, 0.3, 0, 0.5, seed=2, drift_ppm=460), ANALYSIS_RATE)
+    measured = measure_offset(a, b, ANALYSIS_RATE)
+    assert measured.lag_s == pytest.approx(10.0, abs=0.002)
+    assert measured.drift_ppm == pytest.approx(460, abs=10)
+    assert measured.confidence > 3 * THRESHOLD
+
+
+def test_long_unrelated_recordings_stay_unmatched(long_event):
+    a = record(long_event, Phone(0.0, 200, snr_db=15, seed=1), ANALYSIS_RATE)
+    b = record(scene(200, seed=77, rate=ANALYSIS_RATE), Phone(0.0, 200, seed=2), ANALYSIS_RATE)
+    measured = measure_offset(a, b, ANALYSIS_RATE)
+    assert measured.confidence < THRESHOLD
+    assert measured.drift_ppm is None
+
+
 def test_steady_clocks_read_as_no_drift(long_event):
     a = record(long_event, Phone(0.0, 200, snr_db=15, echo=0.4, seed=1), ANALYSIS_RATE)
     b = record(long_event, Phone(31.5, 150, snr_db=15, echo=0.4, seed=2), ANALYSIS_RATE)

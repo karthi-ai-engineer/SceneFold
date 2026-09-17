@@ -9,7 +9,8 @@ Phone clocks are not perfect: one phone's audio can run a few tens of parts per 
 than another's, so the lag slowly changes during a long recording and the single peak smears out.
 After the first match, the overlap is cut into short windows, each window's lag is measured near
 the match, and a straight line through those lags gives the drift. The second recording is then
-stretched to cancel the drift and matched again, which restores a sharp peak.
+stretched to cancel the drift and matched again, which restores a sharp peak. If strong drift over
+a long overlap smeared the first match away entirely, one-minute pieces are matched to find it.
 """
 
 import wave
@@ -30,6 +31,10 @@ SEARCH_MARGIN_S = 0.05
 MIN_DRIFT_SPAN_S = 20.0
 # Stretching is skipped when the drift moves the lag less than this over the whole overlap.
 MIN_DRIFT_EFFECT_S = 0.00025
+# When the whole-clip match shows no drift line, up to this many pieces of B this long are matched
+# instead: strong drift over a long overlap smears a whole-clip match far more than a short piece.
+PIECE_S = 60.0
+MAX_PIECES = 4
 
 
 @dataclass(frozen=True)
@@ -74,10 +79,14 @@ def measure_offset(
         return None
     lag, confidence = found
     drift = _drift_ppm(a, b, lag, rate, beta, window_s, max_drift_ppm)
-    if (
-        drift is None
-        or abs(drift) * 1e-6 * _overlap(lag, len(a), len(b)) < MIN_DRIFT_EFFECT_S * rate
-    ):
+    from_pieces = False
+    if drift is None and (piece_lag := _lag_from_pieces(a, b, rate, beta)) is not None:
+        drift = _drift_ppm(a, b, piece_lag, rate, beta, window_s, max_drift_ppm)
+        from_pieces = drift is not None
+    small = drift is not None and abs(drift) * 1e-6 * _overlap(lag, len(a), len(b)) < (
+        MIN_DRIFT_EFFECT_S * rate
+    )
+    if drift is None or (small and not from_pieces):
         return _measurement(lag, confidence, len(a), len(b), rate, drift)
 
     # Put B on A's clock (B ran fast: fewer samples), then match again for a sharp peak.
@@ -108,6 +117,20 @@ def _best_lag(
     runner_up = float(outside.max()) if outside.size else peak
     confidence = peak / runner_up if runner_up > 0 else 0.0
     return lowest + best + _parabolic_offset(strength, best), confidence
+
+
+def _lag_from_pieces(a: np.ndarray, b: np.ndarray, rate: int, beta: float) -> float | None:
+    """Lag (samples) from the best match among evenly spaced pieces of B (both clips long)."""
+    size = round(PIECE_S * rate)
+    count = min(MAX_PIECES, len(b) // size)
+    if count < 2 or len(a) < 2 * size:
+        return None
+    best = None
+    for start in np.linspace(0, len(b) - size, count).round().astype(int):
+        found = _best_lag(a, b[start : start + size], rate, beta, size // 2)
+        if found is not None and (best is None or found[1] > best[1]):
+            best = (found[0] - start, found[1])
+    return None if best is None else best[0]
 
 
 def _strength(
