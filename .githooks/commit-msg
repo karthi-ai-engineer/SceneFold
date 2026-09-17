@@ -1,0 +1,20 @@
+#!/bin/sh
+# Commit guard: every commit must be authored by the Karthi AI Engineer GitHub
+# account and must not credit Claude/Anthropic. Enable once per clone with:
+#   git config core.hooksPath .githooks
+
+ALLOWED_EMAIL="296384397+karthi-ai-engineer@users.noreply.github.com"
+
+for ident in GIT_AUTHOR_IDENT GIT_COMMITTER_IDENT; do
+  email=$(git var "$ident" | sed -n 's/.*<\(.*\)>.*/\1/p')
+  if [ "$email" != "$ALLOWED_EMAIL" ]; then
+    echo "commit blocked: $ident is <$email>, expected <$ALLOWED_EMAIL>" >&2
+    echo "fix: git config user.name \"Karthi AI Engineer\" && git config user.email \"$ALLOWED_EMAIL\"" >&2
+    exit 1
+  fi
+done
+
+if grep -qiE 'co-authored-by:.*(claude|anthropic)|noreply@anthropic\.com|generated with .*claude' "$1"; then
+  echo "commit blocked: message credits Claude/Anthropic; remove that line" >&2
+  exit 1
+fi

@@ -1,0 +1,11 @@
+# Normalize text to LF so the repo behaves the same on Windows, macOS, and Linux.
+* text=auto eol=lf
+
+# Binary media (large footage is never committed; see .gitignore)
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.mp4  binary
+*.mov  binary
+*.mkv  binary
+*.wav  binary

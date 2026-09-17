@@ -1,0 +1,37 @@
+# Scenefold
+
+Many phone videos of one event → one synced timeline, one cited story, one edited film.
+Vision and firm principles: `PROJECT_BRIEF.md`. Phases and current status: `docs/ROADMAP.md`.
+
+## Git rules (firm)
+
+- Commits, PRs, and pushes credit **only** the GitHub account `karthi-ai-engineer`.
+  Never add `Co-Authored-By: Claude…`, "Generated with Claude Code", or any Claude/Anthropic credit.
+- Commit identity: `Karthi AI Engineer <296384397+karthi-ai-engineer@users.noreply.github.com>`.
+- After cloning on a new machine, run once before committing:
+  ```sh
+  git config user.name "Karthi AI Engineer"
+  git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
+  git config core.hooksPath .githooks
+  ```
+  `.githooks/commit-msg` blocks commits with any other identity or with Claude credits.
+  Do not bypass it with `--no-verify`.
+- Machines may have other git identities or `gh` accounts (work laptops). Check `git var GIT_AUTHOR_IDENT`
+  and `gh auth status` before the first commit or push on a new machine.
+
+## Commands
+
+Needs FFmpeg (with ffprobe) and `uv` on PATH.
+
+```sh
+uv sync                                   # create .venv and install
+uv run pytest                             # all tests (generates tiny test videos with FFmpeg)
+uv run ruff format src tests && uv run ruff check src tests
+uv run scenefold ingest <event> <videos or folders>   # writes data/<event>/
+```
+
+## Working style
+
+- Work one phase at a time, in the order of `docs/ROADMAP.md`. Update its status table when a step lands.
+- Never commit footage, generated media, model weights, or `.env`.
+- Before ending a session (machines change often), commit and push so the next machine can continue.
