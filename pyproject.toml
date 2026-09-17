@@ -1,0 +1,35 @@
+[project]
+name = "scenefold"
+version = "0.1.0"
+description = "Many phone videos of one event, folded into one synced, cited story."
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2.10",
+]
+
+[project.scripts]
+scenefold = "scenefold.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.9",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = ["SIM905"]  # "-a b -c d".split() keeps FFmpeg command lines readable
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "ffmpeg: needs ffmpeg and ffprobe on PATH",
+]
