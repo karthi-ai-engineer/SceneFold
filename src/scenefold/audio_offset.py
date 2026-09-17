@@ -5,8 +5,9 @@ every frequency counts about equally. That turns the cross-correlation into a sh
 lag and keeps loud low rumble from dominating. No speech recognition is needed; any sound that
 changes over time (music, claps, cheering, traffic) works.
 
-Phone clocks are not perfect: one phone's audio can run a few tens of parts per million (ppm) faster
-than another's, so the lag slowly changes during a long recording and the single peak smears out.
+Phone clocks are not perfect: one phone's audio can run tens, on some models hundreds, of parts per
+million (ppm) faster than another's, so the lag slowly changes during a long recording and the
+single peak smears out.
 After the first match, the overlap is cut into short windows, each window's lag is measured near
 the match, and a straight line through those lags gives the drift. The second recording is then
 stretched to cancel the drift and matched again, which restores a sharp peak. If strong drift over
@@ -199,9 +200,8 @@ def _drift_ppm(
         return None
 
     t, lags_s = np.array(times), np.array(lags)
-    slope, intercept = stats.theilslopes(lags_s, t)[
-        :2
-    ]  # a median of slopes: outliers can't tilt it
+    # Theil-Sen takes the median of the slopes between window pairs, so outliers can't tilt it
+    slope, intercept = stats.theilslopes(lags_s, t)[:2]
     on_line = np.abs(lags_s - (intercept + slope * t)) <= LINE_TOLERANCE_S
     if on_line.sum() < 3 or 2 * on_line.sum() <= len(lags_s):
         return None
