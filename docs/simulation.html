@@ -1,0 +1,1712 @@
+<title>Scenefold Pipeline Simulator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<!--
+  Scenefold pipeline simulator: an imaginary event run through the steps that are built so far.
+  Everything is invented in the browser; nothing reads real footage.
+
+  How to extend (one section per new pipeline step):
+    1. Add a <section class="stage" id="..."> with its controls and a canvas/svg.
+    2. Add a link to it in <nav id="stage-nav"> and a chip in the pipeline strip.
+    3. Add a <script> block before "boot" that defines `STAGES.<id> = { reset(), render() }`.
+       Shared state lives in `S` (event, ingest, pairs, solution, evaluation).
+  Keep the maths in the "core" script identical in spirit to src/scenefold/*.py.
+-->
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --raised: #ffffff;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #7d7b75;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --focus: #4a3aa7;
+  --accent: #4a3aa7;
+  --accent-wash: rgba(74, 58, 167, 0.08);
+  --good: #0ca30c;
+  --good-ink: #006300;
+  --warning: #fab219;
+  --critical: #d03b3b;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300;
+  --band: rgba(74, 58, 167, 0.10);
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --plane: #0d0d0d; --surface: #1a1a19; --raised: #222220;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #95938c;
+    --grid: #2c2c2a; --axis: #45453f; --border: rgba(255, 255, 255, 0.10);
+    --focus: #9085e9; --accent: #9085e9; --accent-wash: rgba(144, 133, 233, 0.12);
+    --good-ink: #0ca30c;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+    --band: rgba(144, 133, 233, 0.14);
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d; --surface: #1a1a19; --raised: #222220;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #95938c;
+  --grid: #2c2c2a; --axis: #45453f; --border: rgba(255, 255, 255, 0.10);
+  --focus: #9085e9; --accent: #9085e9; --accent-wash: rgba(144, 133, 233, 0.12);
+  --good-ink: #0ca30c;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+  --band: rgba(144, 133, 233, 0.14);
+  --shadow: none;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font: 15px/1.55 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.2; }
+h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 24px; font-weight: 600; }
+h3 { font-size: 15px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+code, .mono, pre { font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace; }
+code { font-size: 0.9em; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* hero */
+.hero { padding-block: 40px 20px; display: grid; gap: 14px; }
+.eyebrow { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.lede { color: var(--ink-2); font-size: 16px; }
+.pipeline { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pipeline li { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.pipeline li + li::before { content: "→"; color: var(--muted); margin-right: 2px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); white-space: nowrap; }
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.chip.built .dot { background: var(--good); }
+.chip.next { color: var(--muted); border-style: dashed; }
+
+/* nav */
+#stage-nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: color-mix(in srgb, var(--plane) 92%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--border); }
+#stage-nav ol { list-style: none; margin: 0 auto; padding: 8px 20px; max-width: 1120px; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+#stage-nav a { display: block; padding: 6px 10px; border-radius: 6px; color: var(--ink-2); text-decoration: none; font-size: 13px; white-space: nowrap; }
+#stage-nav a:hover { background: var(--accent-wash); color: var(--ink); }
+#stage-nav a.active { background: var(--accent-wash); color: var(--accent); font-weight: 500; }
+#stage-nav a span { color: var(--muted); margin-right: 4px; font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+
+/* stages */
+.stage { padding-block: 36px; border-bottom: 1px solid var(--border); scroll-margin-top: 56px; }
+.stage-head { display: grid; gap: 8px; margin-bottom: 18px; }
+.stage-head .where { font-size: 12px; color: var(--muted); font-family: "IBM Plex Mono", monospace; }
+.stage-head p { color: var(--ink-2); }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.two { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .two { grid-template-columns: minmax(0, 1fr); } }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; }
+.field { display: grid; gap: 4px; font-size: 12px; color: var(--ink-2); }
+.field.inline { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); }
+select, input[type="range"] { font: inherit; }
+select { font-size: 13px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--raised); color: var(--ink); }
+input[type="range"] { accent-color: var(--accent); width: 140px; }
+input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; }
+button { font: inherit; font-size: 13px; font-weight: 500; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--raised); color: var(--ink); cursor: pointer; }
+button:hover { border-color: var(--axis); }
+button.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+button.primary:hover { opacity: 0.88; }
+button:disabled { opacity: 0.5; cursor: progress; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+canvas.chart { display: block; width: 100%; height: auto; }
+.fig-title { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.note { font-size: 13px; color: var(--ink-2); }
+.note b { color: var(--ink); font-weight: 600; }
+.hidden-truth { font-size: 12px; color: var(--muted); }
+
+/* phone cards */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--raised); display: grid; gap: 3px; font-size: 13px; border-top: 3px solid var(--c, var(--axis)); }
+.card .t { font-weight: 600; }
+.card .d { color: var(--ink-2); font-size: 12px; }
+.card .k { color: var(--muted); font-size: 12px; font-family: "IBM Plex Mono", monospace; }
+
+/* ingest rows */
+.rows { display: grid; gap: 8px; }
+.row { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; }
+@media (max-width: 640px) { .row { grid-template-columns: minmax(0, 1fr); } }
+.row .name { display: flex; align-items: center; gap: 6px; font-weight: 500; min-width: 0; }
+.row .name i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.steps { display: flex; flex-wrap: wrap; gap: 4px; }
+.step { font-size: 11px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); transition: background 0.2s, color 0.2s; }
+.step.on { color: var(--ink); background: var(--accent-wash); border-color: transparent; }
+.pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+.pill::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: var(--muted); }
+.pill.ok::before { background: var(--good); }
+.pill.warning::before { background: var(--warning); }
+.pill.failed::before, .pill.bad::before { background: var(--critical); }
+.issue { grid-column: 2 / -1; font-size: 12px; color: var(--ink-2); }
+
+pre.json { margin: 0; font-size: 12px; line-height: 1.5; background: var(--raised); border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow: auto; max-height: 420px; color: var(--ink-2); }
+pre.json .k { color: var(--ink); }
+
+/* results */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.tile { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--raised); display: grid; gap: 2px; }
+.tile .l { font-size: 12px; color: var(--muted); }
+.tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 12px; color: var(--ink-2); }
+.formula { font-family: "IBM Plex Mono", monospace; font-size: 13px; background: var(--raised); border: 1px dashed var(--axis); border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
+
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; max-height: 360px; overflow: auto; }
+.log li { padding: 6px 10px; border-radius: 6px; background: var(--raised); border: 1px solid var(--border); }
+.log li.now { border-color: var(--accent); background: var(--accent-wash); }
+.log li b { font-weight: 600; }
+
+table.data { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+table.data th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--axis); padding: 6px 8px; }
+table.data td { border-bottom: 1px solid var(--grid); padding: 6px 8px; }
+.table-wrap { overflow-x: auto; }
+.swatch { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+
+svg.graph { width: 100%; height: auto; display: block; }
+svg.graph text { fill: var(--ink); font-size: 12px; font-family: "IBM Plex Sans", sans-serif; }
+
+#tip { position: fixed; z-index: 50; pointer-events: none; background: var(--raised); color: var(--ink); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; font-size: 12px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); max-width: 260px; }
+footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display: grid; gap: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">Scenefold · built so far · imaginary data</div>
+    <h1>Scenefold, simulated</h1>
+    <p class="lede">Several phones film the same event. Each run below invents a new event and puts its fake phone clips through the steps Scenefold can already do. The maths is the same as the real code, only smaller and slower on purpose, so you can watch it.</p>
+    <ol class="pipeline" aria-label="Pipeline">
+      <li><span class="chip built"><span class="dot"></span>Ingest</span></li>
+      <li><span class="chip built"><span class="dot"></span>Sync by sound</span></li>
+      <li><span class="chip built"><span class="dot"></span>Evaluate</span></li>
+      <li><span class="chip next"><span class="dot"></span>Synced viewer (next)</span></li>
+    </ol>
+  </header>
+</div>
+
+<nav id="stage-nav" aria-label="Steps">
+  <ol>
+    <li><a href="#event"><span>1</span>The event</a></li>
+    <li><a href="#ingest"><span>2</span>Ingest</a></li>
+    <li><a href="#pair"><span>3</span>Match two clips</a></li>
+    <li><a href="#drift"><span>4</span>Clock drift</a></li>
+    <li><a href="#solve"><span>5</span>Solve all clips</a></li>
+    <li><a href="#evaluate"><span>6</span>Check accuracy</a></li>
+    <li><a href="#output"><span>7</span>Output</a></li>
+  </ol>
+</nav>
+
+<main class="wrap">
+
+  <section class="stage" id="event">
+    <div class="stage-head">
+      <div class="where">imaginary · stands in for real phone videos</div>
+      <h2>1. The event</h2>
+      <p>People start and stop filming whenever they like. Every phone clock runs a little fast or slow, some phones stand far away or in echoey corners, and nobody shares a clock. Scenefold never sees the facts on these cards; it only gets the clips.</p>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <label class="field">Phones
+          <select id="ev-phones"><option>2</option><option>3</option><option selected>4</option><option>5</option></select>
+        </label>
+        <label class="field">Clock drift
+          <select id="ev-drift">
+            <option value="none">Perfect clocks</option>
+            <option value="normal" selected>Normal phones (±40 ppm)</option>
+            <option value="strong">One old phone (+270 ppm)</option>
+          </select>
+        </label>
+        <label class="field">Sound
+          <select id="ev-noise">
+            <option value="quiet">Quiet room</option>
+            <option value="crowd" selected>Crowd</option>
+            <option value="loud">Very loud crowd</option>
+          </select>
+        </label>
+        <label class="field inline"><input type="checkbox" id="ev-unrelated" checked>Add a clip from another event</label>
+        <label class="field inline"><input type="checkbox" id="ev-silent">Add a clip with no sound</label>
+        <button id="ev-new">New random event</button>
+        <button id="ev-play" class="primary">▶ Film the event</button>
+      </div>
+      <div class="fig-title"><span>Real time (seconds). Dashed lines are claps that every nearby phone hears.</span><span id="ev-status" class="num"></span></div>
+      <canvas id="ev-canvas" class="chart" width="1080" height="300" aria-label="Recording bars of each phone over real time"></canvas>
+      <div id="ev-cards" class="cards"></div>
+    </div>
+  </section>
+
+  <section class="stage" id="ingest">
+    <div class="stage-head">
+      <div class="where">src/scenefold/ingest.py · media.py · manifest.py — <code>scenefold ingest</code></div>
+      <h2>2. Ingest: make every clip alike</h2>
+      <p>Each file is read, given an ID from its fingerprint, kept untouched, and turned into a working copy: 720p, a steady 30 frames per second, upright, plus a mono 48 kHz sound file. Picture and sound start at the same instant, clip time 0. Problems become warnings, never crashes.</p>
+    </div>
+    <div class="two">
+      <div class="panel">
+        <div class="controls"><button id="ing-run" class="primary">▶ Run ingest</button><span class="note" id="ing-status"></span></div>
+        <div id="ing-rows" class="rows"></div>
+      </div>
+      <div class="panel">
+        <div class="fig-title"><span>manifest.json, written as clips finish</span></div>
+        <pre id="ing-manifest" class="json">{}</pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" id="pair">
+    <div class="stage-head">
+      <div class="where">src/scenefold/audio_offset.py — GCC-PHAT</div>
+      <h2>3. Match two clips by their sound</h2>
+      <p>Slide clip B along clip A and score how well the sounds line up at every shift. The best shift is the lag. Whitening flattens the sound first so every pitch counts about equally, which turns the match into a sharp spike. Confidence is the best spike divided by the best one outside ±100 ms.</p>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <label class="field">Clip A<select id="pair-a"></select></label>
+        <label class="field">Clip B<select id="pair-b"></select></label>
+        <label class="field">Whitening β <output id="pair-beta-out" class="num">0.8</output>
+          <input type="range" id="pair-beta" min="0" max="1" step="0.1" value="0.8">
+        </label>
+        <button id="pair-run" class="primary">▶ Slide and match</button>
+      </div>
+      <div class="fig-title"><span>Sound of each clip on its own clock (loudness)</span></div>
+      <canvas id="pair-wave" class="chart" width="1080" height="150" aria-label="Clip A and clip B sound, B shifted by the tried lag"></canvas>
+      <div class="two">
+        <div class="panel" style="padding:0;border:0;box-shadow:none;background:none">
+          <div class="fig-title"><span>Match score at every lag (B's start on A's clock)</span></div>
+          <canvas id="pair-corr" class="chart" width="700" height="240" aria-label="Correlation strength over lag"></canvas>
+        </div>
+        <div class="panel" style="padding:0;border:0;box-shadow:none;background:none">
+          <div class="fig-title"><span>Zoom: ±300 ms around the best lag</span></div>
+          <canvas id="pair-zoom" class="chart" width="440" height="240" aria-label="Zoom on the correlation peak and the ±100 ms exclusion zone"></canvas>
+        </div>
+      </div>
+      <div id="pair-result" class="tiles"></div>
+    </div>
+  </section>
+
+  <section class="stage" id="drift">
+    <div class="stage-head">
+      <div class="where">src/scenefold/audio_offset.py — windows, Theil–Sen line, stretch, one-minute pieces</div>
+      <h2>4. Clock drift: the lag slowly slides</h2>
+      <p>If one phone's clock runs fast, its sound slowly slides against the other's, and one long match smears into a low, wide bump. So the overlap is cut into 10-second windows, each window's lag is measured, and a straight line through them gives the drift. Clip B is stretched to cancel it and matched again: the spike comes back sharp.</p>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <label class="field">Which recording
+          <select id="drift-source">
+            <option value="pair">The two clips from step 3</option>
+            <option value="strong" selected>Lab: 4 min, old phone at +270 ppm</option>
+            <option value="extreme">Lab: 4 min, +800 ppm in loud noise</option>
+          </select>
+        </label>
+        <button id="drift-run" class="primary">▶ Measure drift</button>
+        <span class="note" id="drift-status"></span>
+      </div>
+      <div class="two">
+        <div class="panel" style="padding:0;border:0;box-shadow:none;background:none">
+          <div class="fig-title"><span>Lag in each 10 s window, minus the first match (ms)</span><span class="legend"><span><i style="background:var(--accent)"></i>on the line</span><span><i style="background:var(--axis)"></i>outlier</span></span></div>
+          <canvas id="drift-scatter" class="chart" width="700" height="280" aria-label="Window lag over time with fitted drift line"></canvas>
+        </div>
+        <div class="panel" style="padding:0;border:0;box-shadow:none;background:none">
+          <div class="fig-title"><span>The match spike, before and after stretching</span></div>
+          <canvas id="drift-peaks" class="chart" width="440" height="280" aria-label="Correlation peak before and after cancelling drift"></canvas>
+        </div>
+      </div>
+      <div id="drift-result" class="tiles"></div>
+    </div>
+  </section>
+
+  <section class="stage" id="solve">
+    <div class="stage-head">
+      <div class="where">src/scenefold/sync.py — weighted least squares, left-out residuals — <code>scenefold sync</code></div>
+      <h2>5. Solve all clips together</h2>
+      <p>Every pair gets matched. Pairs that overlap too little or match too weakly are set aside. The rest are solved together, weighted by confidence, and each pair is then checked against the answer worked out <em>without</em> it. The worst pair beyond 20 ms is dropped and the solve repeats. Clips that never overlap still get placed through the clips between them.</p>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <label class="field inline"><input type="checkbox" id="solve-wrong">Add a wrong match (a repeated chorus)</label>
+        <label class="field">Its confidence <output id="solve-wrong-out" class="num">30</output>
+          <input type="range" id="solve-wrong-conf" min="3" max="60" step="1" value="30">
+        </label>
+        <label class="field">Solver
+          <select id="solve-mode">
+            <option value="leftout" selected>Today: judge each pair without it</option>
+            <option value="plain">Before the fix: plain residual</option>
+          </select>
+        </label>
+        <button id="solve-run" class="primary">▶ Solve</button>
+        <span class="note" id="solve-status"></span>
+      </div>
+      <div class="two">
+        <div class="panel" style="padding:0;border:0;box-shadow:none;background:none">
+          <div class="fig-title"><span>Clips and the pairs measured between them</span><span class="legend"><span><i style="background:var(--good)"></i>used</span><span><i style="background:var(--critical)"></i>inconsistent</span><span><i style="background:var(--axis)"></i>set aside</span></span></div>
+          <svg id="solve-graph" class="graph" viewBox="0 0 640 400" role="img" aria-label="Graph of clips and pair measurements"></svg>
+        </div>
+        <div class="panel" style="padding:0;border:0;box-shadow:none;background:none">
+          <div class="fig-title"><span>What the solver does, step by step</span></div>
+          <ol id="solve-log" class="log"></ol>
+        </div>
+      </div>
+      <div class="fig-title"><span>The master timeline: where each clip lands (bars) vs the hidden truth (ticks)</span></div>
+      <canvas id="solve-timeline" class="chart" width="1080" height="240" aria-label="Placed clips on the master timeline"></canvas>
+      <div id="solve-result" class="note"></div>
+    </div>
+  </section>
+
+  <section class="stage" id="evaluate">
+    <div class="stage-head">
+      <div class="where">src/scenefold/evaluate.py — <code>scenefold evaluate</code></div>
+      <h2>6. Check accuracy with claps</h2>
+      <p>A clap is one instant that several phones catch. Put each phone's clap on the master timeline using that clip's offset and drift: if sync is right, they all land on the same spot. The error of a pair is how far apart its two clips put the same clap. One video frame is 33 ms.</p>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <label class="field inline"><input type="checkbox" id="eval-nudge">Push one clip 50 ms off, to see an error</label>
+        <button id="eval-run" class="primary">▶ Check claps</button>
+        <span class="note" id="eval-status"></span>
+      </div>
+      <div id="eval-tiles" class="tiles"></div>
+      <div class="fig-title"><span>Each clap, zoomed to ±50 ms: one tick per clip. The band is one frame wide.</span></div>
+      <canvas id="eval-claps" class="chart" width="1080" height="220" aria-label="Clap positions per clip around each clap"></canvas>
+      <div class="table-wrap"><table class="data" id="eval-table"></table></div>
+    </div>
+  </section>
+
+  <section class="stage" id="output">
+    <div class="stage-head">
+      <div class="where">data/&lt;event&gt;/timeline.json</div>
+      <h2>7. Output: timeline.json</h2>
+      <p>The file the next phase, the synced viewer, will read. Each placed clip has its offset (where its first frame sits on the shared clock) and drift (use <code>1 + drift_ppm / 1e6</code> as its playback rate). Every pair measurement is kept, with why it was used or rejected.</p>
+    </div>
+    <div class="panel">
+      <div class="formula">t_local = (t_master − offset_s) × (1 + drift_ppm / 1e6)</div>
+      <pre id="out-json" class="json">Run step 5 to fill this in.</pre>
+    </div>
+  </section>
+
+  <footer>
+    <div>Imaginary data, invented in your browser. Sound is simulated at 1,000 samples per second (the real code uses 8,000) so every step runs live.</div>
+    <div>Next phase to add here: the synced viewer.</div>
+  </footer>
+</main>
+<div id="tip" hidden></div>
+<script>
+/* ================= core: invented sound, and the matching steps of audio_offset.py ================= */
+const RATE = 1000; // simulated analysis rate; the real code compares sound at 8000 samples/s
+const EXCLUSION_S = 0.1, LINE_TOLERANCE_S = 0.005, SEARCH_MARGIN_S = 0.05;
+const MIN_DRIFT_SPAN_S = 20, MIN_DRIFT_EFFECT_S = 0.00025, PIECE_S = 60, MAX_PIECES = 4;
+const SETTINGS = { phat_beta: 0.8, min_overlap_s: 5, min_confidence: 2, max_residual_ms: 20, window_s: 10, max_drift_ppm: 1000 };
+
+function rng(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), s | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gauss(r) { let u = 0; while (!u) u = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); }
+const median = (xs) => { const s = [...xs].sort((p, q) => p - q), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const nextPow2 = (n) => { let p = 1; while (p < n) p <<= 1; return p; };
+
+/* A scene is sound defined in continuous real time: many short tone grains (voices, crowd) plus
+   loud claps. A phone samples it on its own clock, so clock drift is exact, not interpolated. */
+function makeScene(seconds, seed, claps = [], repeat = null) {
+  const r = rng(seed), grains = [];
+  for (let block = 0; block < seconds * 2; block++) {
+    const loud = 0.15 + 0.85 * r() ** 2; // loudness changes every half second
+    const count = 6 + Math.floor(r() * 10);
+    for (let i = 0; i < count; i++) {
+      grains.push({ c: (block + r()) / 2, f: 60 + r() * 260, w: 0.004 + r() * 0.02, a: loud * (0.2 + r()), p: r() * 6.283 });
+    }
+  }
+  for (const t of claps) {
+    for (let i = 0; i < 6; i++) grains.push({ c: t + (r() - 0.5) * 0.002, f: 150 + r() * 280, w: 0.002 + r() * 0.002, a: 2.4, p: r() * 6.283 });
+  }
+  if (repeat) { // the same sound again later, like a recorded chorus played twice
+    for (const g of grains.filter((g) => g.c >= repeat.from && g.c < repeat.to)) grains.push({ ...g, c: g.c + repeat.shift });
+  }
+  grains.sort((x, y) => x.c - y.c);
+  return { seconds, grains, claps };
+}
+
+/* What one phone hears. Phone clip time t shows real time start + t / (1 + drift_ppm / 1e6). */
+function record(scene, ph) {
+  const n = Math.max(0, Math.floor(ph.seconds * RATE)), out = new Float64Array(n);
+  const perSecond = RATE * (1 + ph.drift_ppm * 1e-6);
+  for (const g of scene.grains) {
+    const lo = Math.max(0, Math.ceil((g.c - 4 * g.w - ph.start) * perSecond));
+    const hi = Math.min(n - 1, Math.floor((g.c + 4 * g.w - ph.start) * perSecond));
+    for (let i = lo; i <= hi; i++) {
+      const t = ph.start + i / perSecond - g.c;
+      out[i] += g.a * Math.exp(-0.5 * (t / g.w) ** 2) * Math.cos(6.283185307 * g.f * t + g.p);
+    }
+  }
+  if (ph.echo) {
+    const dry = out.slice();
+    for (const [ms, k] of [[11, 0.8], [23, 0.5], [37, 0.35], [58, 0.2]]) {
+      const d = Math.round((ms * RATE) / 1000);
+      for (let i = d; i < n; i++) out[i] += ph.echo * k * dry[i - d];
+    }
+  }
+  let power = 0;
+  for (let i = 0; i < n; i++) power += out[i] * out[i];
+  const noise = Math.sqrt(power / Math.max(1, n) / 10 ** (ph.snr_db / 10));
+  const r = rng(ph.seed * 7919 + 13);
+  for (let i = 0; i < n; i++) out[i] = ph.gain * (out[i] + noise * gauss(r));
+  return out;
+}
+
+function envelope(x, step = 100) {
+  const out = new Float32Array(Math.ceil(x.length / step));
+  for (let j = 0; j < out.length; j++) {
+    let s = 0, c = 0;
+    for (let i = j * step; i < Math.min(x.length, (j + 1) * step); i++) { s += x[i] * x[i]; c++; }
+    out[j] = Math.sqrt(s / Math.max(1, c));
+  }
+  return out;
+}
+
+function fft(re, im, inverse) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = ((inverse ? 2 : -2) * Math.PI) / len, half = len >> 1;
+    const cs = new Float64Array(half), sn = new Float64Array(half);
+    for (let k = 0; k < half; k++) { cs[k] = Math.cos(ang * k); sn[k] = Math.sin(ang * k); }
+    for (let i = 0; i < n; i += len) {
+      for (let k = 0; k < half; k++) {
+        const a = i + k, b = a + half;
+        const tr = re[b] * cs[k] - im[b] * sn[k], ti = re[b] * sn[k] + im[b] * cs[k];
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+    }
+  }
+  if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+}
+
+const prepare = (x) => { let m = 0; for (const v of x) m += v; m /= Math.max(1, x.length); return x.map((v) => v - m); };
+
+/* |GCC-PHAT-beta| at lags lowest..highest (samples): on A's clock, B's time 0 sits `lag` samples in. */
+function strength(a, b, beta, lowest, highest) {
+  const size = nextPow2(a.length + b.length);
+  const ar = new Float64Array(size), ai = new Float64Array(size), br = new Float64Array(size), bi = new Float64Array(size);
+  ar.set(a); br.set(b);
+  fft(ar, ai, false); fft(br, bi, false);
+  const mag = new Float64Array(size);
+  let loudest = 0;
+  for (let i = 0; i < size; i++) {
+    const re = ar[i] * br[i] + ai[i] * bi[i], im = ai[i] * br[i] - ar[i] * bi[i];
+    ar[i] = re; ai[i] = im; mag[i] = Math.hypot(re, im);
+    if (mag[i] > loudest) loudest = mag[i];
+  }
+  if (!(loudest > 0)) return null; // silence: nothing to match
+  for (let i = 0; i < size; i++) { const s = (mag[i] + loudest * 1e-6) ** beta; ar[i] /= s; ai[i] /= s; }
+  fft(ar, ai, true);
+  const out = new Float64Array(highest - lowest + 1);
+  for (let lag = lowest; lag <= highest; lag++) out[lag - lowest] = Math.abs(ar[(lag + size) % size]);
+  return out;
+}
+
+function parabolic(v, i) {
+  if (i <= 0 || i >= v.length - 1) return 0;
+  const c = v[i - 1] - 2 * v[i] + v[i + 1];
+  return c >= 0 ? 0 : Math.max(-0.5, Math.min(0.5, (0.5 * (v[i - 1] - v[i + 1])) / c));
+}
+
+/* The strongest match with at least minOverlap samples, and how clearly it beats the next best. */
+function bestLag(a, b, beta, minOverlap) {
+  if (Math.min(a.length, b.length) < minOverlap) return null;
+  const lowest = minOverlap - b.length, highest = a.length - minOverlap;
+  const st = strength(a, b, beta, lowest, highest);
+  if (!st) return { lag: Math.max(lowest, Math.min(0, highest)), confidence: 0, st: null, lowest };
+  let best = 0;
+  for (let i = 1; i < st.length; i++) if (st[i] > st[best]) best = i;
+  const ex = Math.round(EXCLUSION_S * RATE);
+  let runner = -1, runnerIdx = -1;
+  for (let i = 0; i < st.length; i++) if ((i < best - ex || i > best + ex) && st[i] > runner) { runner = st[i]; runnerIdx = i; }
+  if (runnerIdx < 0) runner = st[best];
+  return { lag: lowest + best + parabolic(st, best), confidence: runner > 0 ? st[best] / runner : 0, st, lowest, best, runnerIdx };
+}
+
+const overlapOf = (lag, la, lb) => Math.max(0, Math.min(la, lag + lb) - Math.max(0, lag));
+
+/* Drift from the lag in 10 s windows: a Theil-Sen line, kept if most windows sit on it. */
+function driftPpm(a, b, lag, beta) {
+  const start = Math.max(0, lag), end = Math.min(a.length, lag + b.length);
+  const size = Math.round(SETTINGS.window_s * RATE), count = Math.floor((end - start) / size);
+  if (count < 3) return { ppm: null, windows: [], reason: "overlap holds fewer than 3 windows" };
+  const search = Math.round((SEARCH_MARGIN_S + (SETTINGS.max_drift_ppm * 1e-6 * (end - start)) / RATE) * RATE);
+  const margin = (end - start - count * size) / 2;
+  const windows = [];
+  for (let index = 0; index < count; index++) {
+    const first = Math.floor(start + margin + index * size);
+    const low = Math.max(0, Math.round(first - lag) - search);
+    const high = Math.min(b.length, Math.round(first - lag) + size + search);
+    const centre = Math.round(lag) + low - first;
+    const lowest = Math.max(centre - search, (size >> 1) - (high - low));
+    const highest = Math.min(centre + search, size - (size >> 1));
+    if (lowest > highest) continue;
+    const st = strength(a.subarray(first, first + size), b.subarray(low, high), beta, lowest, highest);
+    if (!st) continue;
+    let best = 0;
+    for (let i = 1; i < st.length; i++) if (st[i] > st[best]) best = i;
+    windows.push({ t: (first + size / 2) / RATE, lag: (lowest + best + parabolic(st, best) + first - low) / RATE, on: false });
+  }
+  if (windows.length < 3) return { ppm: null, windows, reason: "fewer than 3 windows had sound" };
+  const slopes = [];
+  for (let i = 0; i < windows.length; i++) for (let j = i + 1; j < windows.length; j++) {
+    slopes.push((windows[j].lag - windows[i].lag) / (windows[j].t - windows[i].t));
+  }
+  let slope = median(slopes), intercept = median(windows.map((w) => w.lag)) - slope * median(windows.map((w) => w.t));
+  const on = windows.filter((w) => Math.abs(w.lag - (intercept + slope * w.t)) <= LINE_TOLERANCE_S);
+  windows.forEach((w) => { w.on = on.includes(w); });
+  const line = { slope, intercept };
+  if (on.length < 3 || 2 * on.length <= windows.length) return { ppm: null, windows, line, reason: "most windows are not on one straight line" };
+  const span = Math.max(...on.map((w) => w.t)) - Math.min(...on.map((w) => w.t));
+  if (span < MIN_DRIFT_SPAN_S) return { ppm: null, windows, line, reason: "the windows on the line span under 20 s" };
+  const mt = on.reduce((s, w) => s + w.t, 0) / on.length, ml = on.reduce((s, w) => s + w.lag, 0) / on.length;
+  let sxy = 0, sxx = 0;
+  for (const w of on) { sxy += (w.t - mt) * (w.lag - ml); sxx += (w.t - mt) ** 2; }
+  slope = sxy / sxx; intercept = ml - slope * mt;
+  const ppm = -slope * 1e6; // B running fast makes the lag shrink over time
+  const fit = { slope, intercept };
+  if (Math.abs(ppm) > SETTINGS.max_drift_ppm) return { ppm: null, windows, line: fit, reason: "the line is steeper than any real phone" };
+  return { ppm, windows, line: fit, reason: null };
+}
+
+/* Stretch B onto A's clock (the real code uses an FFT resample; cubic interpolation is close enough here). */
+function resampleTo(x, n) {
+  const out = new Float64Array(n), ratio = x.length / n, last = x.length - 1;
+  for (let i = 0; i < n; i++) {
+    const p = i * ratio, k = Math.floor(p), f = p - k;
+    const y0 = x[Math.max(0, k - 1)], y1 = x[Math.min(last, k)], y2 = x[Math.min(last, k + 1)], y3 = x[Math.min(last, k + 2)];
+    out[i] = y1 + 0.5 * f * (y2 - y0 + f * (2 * y0 - 5 * y1 + 4 * y2 - y3 + f * (3 * (y1 - y2) + y3 - y0)));
+  }
+  return out;
+}
+
+/* When strong drift hides the whole-clip match: match one-minute pieces of B instead. */
+function lagFromPieces(a, b, beta) {
+  const size = Math.round(PIECE_S * RATE), count = Math.min(MAX_PIECES, Math.floor(b.length / size));
+  if (count < 2 || a.length < 2 * size) return null;
+  const pieces = [];
+  for (let k = 0; k < count; k++) {
+    const start = Math.round((k * (b.length - size)) / (count - 1));
+    const found = bestLag(a, b.subarray(start, start + size), beta, size >> 1);
+    if (found) pieces.push({ start: start / RATE, lag: found.lag - start, confidence: found.confidence });
+  }
+  if (!pieces.length) return null;
+  const best = pieces.reduce((p, q) => (q.confidence > p.confidence ? q : p));
+  return { lag: best.lag, pieces };
+}
+
+/* measure_offset(): the whole pair measurement, with a trace of each step for the animations. */
+function measureOffset(a0, b0, opts = {}) {
+  const beta = opts.beta ?? SETTINGS.phat_beta;
+  const a = prepare(a0), b = prepare(b0);
+  const minOverlap = Math.max(1, Math.round(SETTINGS.min_overlap_s * RATE));
+  const first = bestLag(a, b, beta, minOverlap);
+  if (!first) return null;
+  const trace = { first, drift: null, pieces: null, pieceDrift: null, again: null, stretched: false, len: [a.length, b.length] };
+  const done = (lag, confidence, lb, drift) => {
+    if (!opts.keepTrace) { trace.first = { ...first, st: null }; if (trace.again) trace.again = { ...trace.again, st: null }; }
+    return { lag_s: lag / RATE, confidence, overlap_s: overlapOf(lag, a.length, lb) / RATE, drift_ppm: drift, trace };
+  };
+  trace.drift = driftPpm(a, b, first.lag, beta);
+  let drift = trace.drift.ppm, fromPieces = false;
+  if (drift === null) {
+    trace.pieces = lagFromPieces(a, b, beta);
+    if (trace.pieces) {
+      trace.pieceDrift = driftPpm(a, b, trace.pieces.lag, beta);
+      if (trace.pieceDrift.ppm !== null) { drift = trace.pieceDrift.ppm; fromPieces = true; }
+    }
+  }
+  const small = drift !== null && Math.abs(drift) * 1e-6 * overlapOf(first.lag, a.length, b.length) < MIN_DRIFT_EFFECT_S * RATE;
+  if (drift === null || (small && !fromPieces)) return done(first.lag, first.confidence, b.length, drift);
+  const stretched = resampleTo(b, Math.round(b.length / (1 + drift * 1e-6)));
+  trace.again = bestLag(a, stretched, beta, minOverlap);
+  if (!trace.again || trace.again.confidence < 0.9 * first.confidence) return done(first.lag, first.confidence, b.length, null);
+  trace.stretched = true;
+  return done(trace.again.lag, trace.again.confidence, stretched.length, drift);
+}
+</script>
+<script>
+/* ================= the imaginary event, the solver of sync.py, and evaluate.py ================= */
+const EVENT_S = 150;
+const CLAPS = [14, 58, 97, 133];
+const LETTERS = ["A", "B", "C", "D", "E"];
+const DEVICES = ["Pixel 7", "iPhone 14", "Galaxy S23", "Moto G54", "OnePlus 11"];
+
+function hexId(r) { let s = ""; for (let i = 0; i < 12; i++) s += Math.floor(r() * 16).toString(16); return s; }
+
+function makeEvent(opts) {
+  const r = rng(opts.seed);
+  const scene = makeScene(EVENT_S, opts.seed, CLAPS);
+  const phones = [];
+  for (let i = 0; i < opts.phones; i++) {
+    let seconds = 55 + r() * 45;
+    let start = i === 0 ? r() * 6 : phones[i - 1].start + 6 + r() * Math.max(0, Math.min(35, phones[i - 1].seconds - 25));
+    if (start + seconds > EVENT_S - 1) seconds = EVENT_S - 1 - start;
+    if (seconds < 30) { start = EVENT_S - 31; seconds = 30; }
+    const drift = opts.drift === "none" ? 0 : opts.drift === "strong" && i === 1 ? 270 : (r() * 2 - 1) * (opts.drift === "strong" ? 20 : 40);
+    const snr = opts.noise === "quiet" ? 25 + r() * 5 : opts.noise === "crowd" ? 10 + r() * 10 : r() * 6;
+    const device = opts.drift === "strong" && i === 1 ? "Galaxy S II (2011)" : DEVICES[i];
+    phones.push({
+      key: LETTERS[i], name: `Phone ${LETTERS[i]}`, device, color: `--s${i + 1}`, related: true, sound: true,
+      start: +start.toFixed(3), seconds: +seconds.toFixed(3), drift_ppm: +drift.toFixed(1),
+      gain: 0.3 + r() * 0.9, snr_db: +snr.toFixed(1), echo: +(r() * 0.4).toFixed(2), seed: opts.seed * 10 + i,
+      far: r() < 0.4,
+    });
+  }
+  if (opts.unrelated) {
+    phones.push({ key: "X", name: "Other party", device: "Pixel 6a", color: "--s6", related: false, sound: true,
+      start: 30, seconds: 70, drift_ppm: 12, gain: 0.8, snr_db: 18, echo: 0.2, seed: opts.seed * 10 + 7, far: false,
+      scene: makeScene(90, opts.seed + 1000, []) });
+  }
+  if (opts.silent) {
+    phones.push({ key: "M", name: "Muted clip", device: "iPhone 12", color: "--muted", related: true, sound: false,
+      start: 40, seconds: 40, drift_ppm: 0, gain: 1, snr_db: 30, echo: 0, seed: opts.seed * 10 + 8, far: false });
+  }
+  const r2 = rng(opts.seed + 77);
+  for (const ph of phones) {
+    ph.clip_id = hexId(r2);
+    ph.audio = ph.sound ? record(ph.scene || scene, ph) : null;
+    ph.env = ph.audio ? envelope(ph.audio) : null;
+    ph.realEnd = ph.start + ph.seconds / (1 + ph.drift_ppm * 1e-6);
+  }
+  return { seed: opts.seed, opts, scene, phones };
+}
+
+/* on A's clock, where B's time 0 truly is */
+const trueLag = (a, b) => (b.start - a.start) * (1 + a.drift_ppm * 1e-6);
+
+/* ---- solver (sync.py) ---- */
+function mainGroup(clipIds, pairs) {
+  const parent = Object.fromEntries(clipIds.map((c) => [c, c]));
+  const root = (c) => { while (parent[c] !== c) { parent[c] = parent[parent[c]]; c = parent[c]; } return c; };
+  for (const p of pairs) parent[root(p.clip_a)] = root(p.clip_b);
+  const groups = new Map();
+  for (const c of clipIds) { const k = root(c); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); }
+  let best = null, bestRank = null;
+  for (const g of groups.values()) {
+    const conf = pairs.filter((p) => g.includes(p.clip_a)).reduce((s, p) => s + (p.confidence || 0), 0);
+    const rank = [g.length, conf, -clipIds.indexOf(g[0])];
+    if (!bestRank || rank[0] > bestRank[0] || (rank[0] === bestRank[0] && (rank[1] > bestRank[1] || (rank[1] === bestRank[1] && rank[2] > bestRank[2])))) { best = g; bestRank = rank; }
+  }
+  return best;
+}
+
+function invert(m) {
+  const n = m.length, a = m.map((row, i) => [...row, ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(a[r][c]) > Math.abs(a[p][c])) p = r;
+    [a[c], a[p]] = [a[p], a[c]];
+    const d = a[c][c] || 1e-12;
+    for (let j = 0; j < 2 * n; j++) a[c][j] /= d;
+    for (let r = 0; r < n; r++) if (r !== c) { const f = a[r][c]; for (let j = 0; j < 2 * n; j++) a[r][j] -= f * a[c][j]; }
+  }
+  return a.map((row) => row.slice(n));
+}
+
+/* weighted least squares on a clip graph: value(b) - value(a) = y, first clip of each set fixed */
+function graphSolve(clips, rows) {
+  const col = new Map(clips.slice(1).map((c, i) => [c, i])), m = clips.length - 1;
+  if (m === 0) return { values: { [clips[0]]: 0 }, x: [], minv: [] };
+  const M = Array.from({ length: m }, () => new Array(m).fill(0)), rhs = new Array(m).fill(0);
+  const X = rows.map(({ a, b, y, w }) => {
+    const x = new Array(m).fill(0);
+    if (col.has(b)) x[col.get(b)] += w;
+    if (col.has(a)) x[col.get(a)] -= w;
+    for (let i = 0; i < m; i++) { rhs[i] += x[i] * w * y; for (let j = 0; j < m; j++) M[i][j] += x[i] * x[j]; }
+    return x;
+  });
+  const minv = invert(M), sol = minv.map((row) => row.reduce((s, v, j) => s + v * rhs[j], 0));
+  const values = { [clips[0]]: 0 };
+  clips.slice(1).forEach((c, i) => { values[c] = sol[i]; });
+  return { values, X, minv };
+}
+
+function solveDrift(group, pairs) {
+  const measured = pairs.filter((p) => p.drift_ppm !== null && p.drift_ppm !== undefined);
+  const out = {};
+  const seen = new Set();
+  for (const start of group) {
+    if (seen.has(start) || !measured.some((p) => p.clip_a === start || p.clip_b === start)) continue;
+    const comp = [start], queue = [start];
+    seen.add(start);
+    while (queue.length) {
+      const c = queue.shift();
+      for (const p of measured) {
+        const o = p.clip_a === c ? p.clip_b : p.clip_b === c ? p.clip_a : null;
+        if (o && !seen.has(o)) { seen.add(o); comp.push(o); queue.push(o); }
+      }
+    }
+    const rows = measured.filter((p) => comp.includes(p.clip_a)).map((p) => ({ a: p.clip_a, b: p.clip_b, y: p.drift_ppm, w: (p.overlap_s || 0) ** 1.5 }));
+    const { values } = graphSolve(comp, rows);
+    const mean = comp.reduce((s, c) => s + values[c], 0) / comp.length; // the average clock is the master clock
+    for (const c of comp) out[c] = values[c] - mean;
+  }
+  return out;
+}
+
+function leastSquares(group, pairs, drift) {
+  if (group.length === 1) return { offsets: { [group[0]]: 0 }, residuals: [], leftOut: [] };
+  const rows = pairs.map((p) => ({ a: p.clip_a, b: p.clip_b, w: Math.sqrt(p.confidence), y: p.lag_s / (1 + (drift[p.clip_a] || 0) * 1e-6) }));
+  const { values, X, minv } = graphSolve(group, rows);
+  const residuals = [], leftOut = [];
+  rows.forEach((row, i) => {
+    const r = values[row.b] - values[row.a] - row.y;
+    const x = X[i];
+    let h = 0;
+    for (let j = 0; j < x.length; j++) for (let k = 0; k < x.length; k++) h += x[j] * minv[j][k] * x[k];
+    residuals.push(r);
+    leftOut.push(1 - h > 1e-9 ? r / (1 - h) : 0);
+  });
+  return { offsets: values, residuals, leftOut };
+}
+
+function solveTimeline(clipIds, pairsIn, mode = "leftout") {
+  const pairs = pairsIn.map((p) => ({ ...p, used: false, rejected: null, residual_ms: null }));
+  const steps = [], candidates = [];
+  for (const p of pairs) {
+    if (p.lag_s === null) p.rejected = "short_overlap";
+    else if (p.confidence === null || p.confidence < SETTINGS.min_confidence) p.rejected = "low_confidence";
+    else candidates.push(p);
+  }
+  steps.push({ kind: "screen", aside: pairs.filter((p) => p.rejected) });
+  if (!clipIds.length) return { offsets: {}, drift_ppm: {}, pairs, steps, main: [] };
+  let main, inside, drift, fit;
+  for (;;) {
+    main = mainGroup(clipIds, candidates);
+    inside = candidates.filter((p) => main.includes(p.clip_a));
+    drift = solveDrift(main, inside);
+    fit = leastSquares(main, inside, drift);
+    const scores = (mode === "plain" ? fit.residuals : fit.leftOut).map(Math.abs);
+    const worst = scores.length ? Math.max(...scores) : 0;
+    steps.push({ kind: "fit", main: [...main], checks: inside.map((p, i) => ({ p, residual_ms: fit.residuals[i] * 1000, leftout_ms: fit.leftOut[i] * 1000, score_ms: scores[i] * 1000 })), worst_ms: worst * 1000 });
+    if (worst * 1000 <= SETTINGS.max_residual_ms) break;
+    let dropped;
+    if (mode === "plain") dropped = inside[scores.indexOf(worst)];
+    else dropped = inside.filter((p, i) => scores[i] >= worst - 1e-6).reduce((x, y) => (y.confidence < x.confidence ? y : x));
+    dropped.rejected = "inconsistent";
+    candidates.splice(candidates.indexOf(dropped), 1);
+    steps.push({ kind: "drop", pair: dropped, score_ms: worst * 1000 });
+  }
+  inside.forEach((p, i) => { p.used = true; p.residual_ms = +(fit.residuals[i] * 1000).toFixed(3); });
+  for (const p of candidates) if (!main.includes(p.clip_a)) p.rejected = "separate_group";
+  const earliest = Math.min(...Object.values(fit.offsets));
+  const offsets = Object.fromEntries(Object.entries(fit.offsets).map(([c, o]) => [c, o - earliest]));
+  const drift_ppm = Object.fromEntries(main.map((c) => [c, drift[c] ?? null]));
+  steps.push({ kind: "place", offsets, drift_ppm });
+  return { offsets, drift_ppm, pairs, steps, main };
+}
+
+/* ---- evaluate.py: pair errors at moments several clips caught ---- */
+function evaluateClaps(event, solution, nudgeKey) {
+  const errors = [], moments = [];
+  for (const [index, T] of CLAPS.entries()) {
+    const seen = [];
+    for (const ph of event.phones) {
+      if (!ph.related || !ph.sound) continue;
+      const tLocal = (T - ph.start) * (1 + ph.drift_ppm * 1e-6);
+      if (tLocal < 0 || tLocal > ph.seconds) continue;
+      if (!(ph.clip_id in solution.offsets)) continue;
+      const nudge = ph.key === nudgeKey ? 0.05 : 0;
+      seen.push({ ph, master: solution.offsets[ph.clip_id] + nudge + tLocal / (1 + (solution.drift_ppm[ph.clip_id] || 0) * 1e-6) });
+    }
+    moments.push({ label: `clap ${index + 1}`, seen });
+    for (let i = 0; i < seen.length; i++) for (let j = i + 1; j < seen.length; j++) {
+      errors.push({ moment: `clap ${index + 1}`, a: seen[i].ph, b: seen[j].ph, error_ms: (seen[j].master - seen[i].master) * 1000 });
+    }
+  }
+  const abs = errors.map((e) => Math.abs(e.error_ms)).sort((p, q) => p - q);
+  const pct = (q) => (abs.length ? abs[Math.min(abs.length - 1, Math.ceil(q * abs.length) - 1)] : null);
+  return {
+    errors, moments,
+    median: abs.length ? median(abs) : null,
+    p95: pct(0.95),
+    worst: errors.reduce((w, e) => (!w || Math.abs(e.error_ms) > Math.abs(w.error_ms) ? e : w), null),
+    withinFrame: abs.filter((v) => v <= 1000 / 30).length,
+  };
+}
+</script>
+<script>
+/* ================= page plumbing: shared state, charts, tooltip, animation ================= */
+const S = { event: null, ingest: null, measured: null, solution: null, evaluation: null };
+const STAGES = {};
+const $ = (id) => document.getElementById(id);
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const colorOf = (ph) => css(ph.color);
+const sleep = (ms) => new Promise((r) => setTimeout(r, reduceMotion ? 0 : ms));
+const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v) ? "—" : Number(v).toFixed(d));
+const signed = (v, d = 1) => (v === null || v === undefined ? "—" : (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d));
+
+function animate(ms, fn) {
+  return new Promise((done) => {
+    if (reduceMotion || ms <= 0) { fn(1); done(); return; }
+    const t0 = performance.now();
+    const tick = (now) => { const t = Math.min(1, (now - t0) / ms); fn(t); if (t < 1) requestAnimationFrame(tick); else done(); };
+    requestAnimationFrame(tick);
+  });
+}
+
+function setup(canvas) {
+  if (!canvas._w) {
+    canvas._w = canvas.width; canvas._h = canvas.height;
+    canvas._dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = canvas._w * canvas._dpr; canvas.height = canvas._h * canvas._dpr;
+  }
+  const g = canvas.getContext("2d");
+  g.setTransform(canvas._dpr, 0, 0, canvas._dpr, 0, 0);
+  g.clearRect(0, 0, canvas._w, canvas._h);
+  canvas._k = Math.min(2.4, Math.max(1, canvas._w / (canvas.clientWidth || canvas._w)));
+  g.fontPx = (px, weight = 400, mono = false) => { g.font = `${weight} ${px * canvas._k}px ${mono ? '"IBM Plex Mono", monospace' : '"IBM Plex Sans", sans-serif'}`; };
+  g.fontPx(12);
+  return g;
+}
+
+function niceTicks(lo, hi, count = 6) {
+  const span = hi - lo || 1, raw = span / count, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) || mag * 10;
+  const ticks = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) ticks.push(+v.toFixed(10));
+  return ticks;
+}
+
+/* A plot area with a recessive grid; returns scale functions. */
+function plotArea(g, canvas, box, x0, x1, y0, y1, o = {}) {
+  const X = (v) => box.l + ((v - x0) / (x1 - x0 || 1)) * (box.r - box.l);
+  const Y = (v) => box.b - ((v - y0) / (y1 - y0 || 1)) * (box.b - box.t);
+  g.lineWidth = 1;
+  g.fontPx(11);
+  g.fillStyle = css("--muted");
+  for (const v of niceTicks(x0, x1, o.xTicks || 6)) {
+    g.strokeStyle = css("--grid");
+    g.beginPath(); g.moveTo(X(v), box.t); g.lineTo(X(v), box.b); g.stroke();
+    g.textAlign = "center"; g.textBaseline = "top";
+    g.fillText((o.xFmt || ((t) => t))(v), X(v), box.b + 5);
+  }
+  if (!o.noY) {
+    for (const v of niceTicks(y0, y1, o.yTicks || 4)) {
+      g.strokeStyle = css("--grid");
+      g.beginPath(); g.moveTo(box.l, Y(v)); g.lineTo(box.r, Y(v)); g.stroke();
+      g.textAlign = "right"; g.textBaseline = "middle";
+      g.fillText((o.yFmt || ((t) => t))(v), box.l - 6, Y(v));
+    }
+  }
+  g.strokeStyle = css("--axis");
+  g.beginPath(); g.moveTo(box.l, box.b); g.lineTo(box.r, box.b); g.stroke();
+  if (o.xLabel) { g.textAlign = "right"; g.textBaseline = "bottom"; g.fillStyle = css("--muted"); g.fillText(o.xLabel, box.r, box.t - 2); }
+  return { X, Y };
+}
+
+/* hover layer: `pick(x, y)` gets logical canvas coordinates and returns tooltip HTML or null */
+const tip = () => $("tip");
+function hover(canvas, pick) {
+  const move = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * canvas._w, y = ((e.clientY - rect.top) / rect.height) * canvas._h;
+    const html = canvas._w ? pick(x, y) : null;
+    if (!html) { tip().hidden = true; return; }
+    tip().innerHTML = html; tip().hidden = false;
+    const w = tip().offsetWidth;
+    tip().style.left = Math.min(window.innerWidth - w - 8, e.clientX + 14) + "px";
+    tip().style.top = e.clientY + 14 + "px";
+  };
+  canvas.addEventListener("pointermove", move);
+  canvas.addEventListener("pointerleave", () => { tip().hidden = true; });
+}
+
+function drawEnvelope(g, env, x0, x1, yMid, half, color, from = 0, to = 1) {
+  if (!env) return;
+  let peak = 1e-9;
+  for (const v of env) peak = Math.max(peak, v);
+  g.fillStyle = color;
+  const n = env.length, px = (x1 - x0) / n;
+  for (let i = Math.floor(from * n); i < Math.floor(to * n); i++) {
+    const h = Math.max(0.6, (env[i] / peak) * half);
+    g.fillRect(x0 + i * px, yMid - h, Math.max(0.8, px), 2 * h);
+  }
+}
+
+function setBusy(button, busy, label) {
+  button.disabled = busy;
+  if (label) button.textContent = label;
+}
+
+/* ================= 1. the event ================= */
+STAGES.event = (() => {
+  const canvas = $("ev-canvas");
+  let progress = 1;
+  const box = { l: 118, r: 1064, t: 26, b: 270 };
+
+  function opts() {
+    return { seed: S.seed, phones: +$("ev-phones").value, drift: $("ev-drift").value, noise: $("ev-noise").value,
+      unrelated: $("ev-unrelated").checked, silent: $("ev-silent").checked };
+  }
+  function regenerate() {
+    S.event = makeEvent(opts());
+    S.ingest = S.measured = S.solution = S.evaluation = null;
+    for (const stage of Object.values(STAGES)) stage.reset?.();
+    renderAll();
+  }
+  function lanes() {
+    const phones = S.event.phones, h = (box.b - box.t) / phones.length;
+    return phones.map((ph, i) => ({ ph, y: box.t + i * h, h }));
+  }
+  function render() {
+    const g = setup(canvas);
+    const { X } = plotArea(g, canvas, box, 0, EVENT_S, 0, 1, { noY: true, xTicks: 10, xFmt: (v) => v + " s" });
+    const playhead = progress * EVENT_S;
+    for (const { ph, y, h } of lanes()) {
+      const mid = y + h / 2, half = Math.min(18, h * 0.34);
+      g.fontPx(12, 500); g.fillStyle = css("--ink"); g.textAlign = "left"; g.textBaseline = "middle";
+      g.fillText(ph.name, 8, mid - 7);
+      g.fontPx(11); g.fillStyle = css("--muted");
+      g.fillText(ph.related ? ph.device : "another event", 8, mid + 8);
+      const x0 = X(ph.start), x1 = X(Math.min(ph.realEnd, playhead));
+      if (x1 <= x0) continue;
+      g.globalAlpha = 0.12; g.fillStyle = colorOf(ph);
+      g.beginPath(); g.roundRect(x0, mid - half - 4, x1 - x0, 2 * half + 8, 4); g.fill();
+      g.globalAlpha = 1;
+      if (ph.env) {
+        const shown = Math.min(1, (playhead - ph.start) / (ph.realEnd - ph.start));
+        drawEnvelope(g, ph.env, X(ph.start), X(ph.realEnd), mid, half, colorOf(ph), 0, shown);
+      } else {
+        g.fontPx(11); g.fillStyle = css("--muted"); g.textAlign = "left";
+        g.fillText("no sound", x0 + 6, mid);
+      }
+    }
+    g.setLineDash([4, 4]); g.strokeStyle = css("--ink-2"); g.lineWidth = 1;
+    g.fontPx(11); g.fillStyle = css("--ink-2"); g.textAlign = "center"; g.textBaseline = "bottom";
+    for (const t of CLAPS) {
+      if (t > playhead) continue;
+      g.beginPath(); g.moveTo(X(t), box.t); g.lineTo(X(t), box.b); g.stroke();
+      g.fillText("clap", X(t), box.t - 2);
+    }
+    g.setLineDash([]);
+    if (progress < 1) {
+      g.strokeStyle = css("--accent"); g.lineWidth = 2;
+      g.beginPath(); g.moveTo(X(playhead), box.t - 4); g.lineTo(X(playhead), box.b); g.stroke();
+    }
+    $("ev-status").textContent = progress < 1 ? `real time ${playhead.toFixed(1)} s` : `${S.event.phones.length} clips · seed ${S.event.seed}`;
+  }
+  function cards() {
+    $("ev-cards").innerHTML = S.event.phones.map((ph) => {
+      const perMin = (ph.drift_ppm * 60) / 1000;
+      const clock = ph.drift_ppm === 0 ? "perfect clock" : `clock ${signed(ph.drift_ppm)} ppm (${Math.abs(perMin).toFixed(1)} ms per minute ${ph.drift_ppm > 0 ? "fast" : "slow"})`;
+      const what = !ph.related ? "Filmed at a different party: must not match." : !ph.sound ? "No sound: can't be placed by sound." : `${ph.snr_db} dB above noise · echo ${ph.echo}${ph.far ? " · far away" : ""}`;
+      return `<div class="card" style="--c:var(${ph.color})"><div class="t">${esc(ph.name)}</div><div class="d">${esc(ph.device)}</div>
+        <div class="k">starts ${ph.start.toFixed(2)} s · films ${ph.seconds.toFixed(1)} s</div><div class="k">${clock}</div><div class="d">${what}</div></div>`;
+    }).join("");
+  }
+  hover(canvas, (x, y) => {
+    const lane = lanes().find((l) => y >= l.y && y < l.y + l.h);
+    if (!lane) return null;
+    const ph = lane.ph;
+    return `<b>${esc(ph.name)}</b><br>starts at ${ph.start.toFixed(3)} s real time<br>films ${ph.seconds.toFixed(1)} s on its own clock<br>clock drift ${signed(ph.drift_ppm)} ppm`;
+  });
+  async function play() {
+    const button = $("ev-play");
+    setBusy(button, true);
+    await animate(5000, (t) => { progress = t; render(); });
+    progress = 1; render();
+    setBusy(button, false);
+  }
+  for (const id of ["ev-phones", "ev-drift", "ev-noise", "ev-unrelated", "ev-silent"]) $(id).addEventListener("change", regenerate);
+  $("ev-new").addEventListener("click", () => { S.seed = Math.floor(Math.random() * 1e6); regenerate(); });
+  $("ev-play").addEventListener("click", play);
+  return { regenerate, render() { render(); cards(); } };
+})();
+
+/* ================= 2. ingest ================= */
+STAGES.ingest = (() => {
+  const STEPS = ["Probe", "Clip ID", "Keep original", "Working copy", "Sound file", "Checks"];
+  let running = false;
+
+  function facts(ph) {
+    const r = rng(ph.seed + 5);
+    const portrait = r() < 0.35, big = r() < 0.6;
+    const [w, h] = big ? [1920, 1080] : [1280, 720];
+    const issues = [];
+    if (!ph.sound) issues.push({ code: "no_audio", message: "no usable audio: this clip can't be synced by sound" });
+    if (ph.sound && ph.snr_db < 3) issues.push({ code: "clipped_audio", message: `clipped audio: ${(1 + r() * 3).toFixed(1)}% of samples at full scale` });
+    if (r() < 0.3) issues.push({ code: "variable_frame_rate", message: "variable frame rate: made steady at 30 fps" });
+    const status = issues.some((i) => i.code === "no_audio" || i.code === "clipped_audio") ? "warning" : "ok";
+    const name = ph.related ? `${["VID", "IMG", "PXL"][Math.floor(r() * 3)]}_${20260917 + Math.floor(r() * 2)}_${String(Math.floor(r() * 1e6)).padStart(6, "0")}.mp4` : "party_clip.mp4";
+    return {
+      clip_id: ph.clip_id, status, issues,
+      source: { name, duration_s: +ph.seconds.toFixed(3),
+        video: { width: portrait ? h : w, height: portrait ? w : h, rotation: 0, fps: issues.some((i) => i.code === "variable_frame_rate") ? 29.2 : 30 },
+        audio: ph.sound ? { codec: "aac", sample_rate: r() < 0.7 ? 48000 : 44100 } : null },
+      proxy: { video: `proxies/${ph.clip_id}.mp4`, audio: ph.sound ? `proxies/${ph.clip_id}.wav` : null,
+        width: portrait ? 720 : 1280, height: portrait ? 1280 : 720, fps: 30, duration_s: +ph.seconds.toFixed(3) },
+    };
+  }
+  function json(value) {
+    return esc(JSON.stringify(value, null, 2)).replace(/&quot;([^&]+)&quot;:/g, '<span class="k">&quot;$1&quot;</span>:');
+  }
+  function rows(done = {}) {
+    $("ing-rows").innerHTML = S.event.phones.map((ph) => {
+      const d = done[ph.key] || { steps: 0 };
+      const clip = d.clip;
+      return `<div class="row"><div class="name"><i style="background:var(${ph.color})"></i>${esc(ph.name)}</div>
+        <div class="steps">${STEPS.map((s, i) => `<span class="step${i < d.steps ? " on" : ""}">${s}</span>`).join("")}</div>
+        <div>${clip ? `<span class="pill ${clip.status}">${clip.status}</span>` : ""}</div>
+        ${clip ? `<div class="issue">${clip.source.name} → ${clip.proxy.width}×${clip.proxy.height}, 30 fps${clip.proxy.audio ? " + 48 kHz WAV" : ""} · clip ${clip.clip_id}${clip.issues.map((i) => ` · ${esc(i.message)}`).join("")}</div>` : ""}
+      </div>`;
+    }).join("");
+  }
+  function manifest(clips) {
+    return { schema_version: 1, event_id: `imaginary-${S.event.seed}`, proxy_settings: { max_short_side: 720, fps: 30, audio_sample_rate: 48000 }, clips };
+  }
+  async function run() {
+    if (running) return;
+    running = true;
+    const button = $("ing-run");
+    setBusy(button, true);
+    const done = {}, clips = [];
+    for (const ph of S.event.phones) {
+      done[ph.key] = { steps: 0 };
+      for (let s = 1; s <= STEPS.length; s++) { done[ph.key].steps = s; rows(done); await sleep(170); }
+      done[ph.key].clip = facts(ph);
+      clips.push(done[ph.key].clip);
+      rows(done);
+      $("ing-manifest").innerHTML = json(manifest(clips));
+    }
+    S.ingest = { done, clips };
+    $("ing-status").textContent = `${clips.length} clips ingested · ${clips.filter((c) => c.status === "warning").length} with warnings`;
+    setBusy(button, false);
+    running = false;
+  }
+  $("ing-run").addEventListener("click", run);
+  return {
+    reset() { $("ing-status").textContent = ""; $("ing-manifest").textContent = "{}"; },
+    render() { if (!running) { rows(S.ingest?.done); if (S.ingest) $("ing-manifest").innerHTML = json(manifest(S.ingest.clips)); } },
+  };
+})();
+</script>
+<script>
+/* ================= 3. match two clips ================= */
+STAGES.pair = (() => {
+  const wave = $("pair-wave"), corr = $("pair-corr"), zoom = $("pair-zoom");
+  let result = null, reveal = 1, a = null, b = null;
+
+  const usable = () => S.event.phones.filter((ph) => ph.sound);
+  function fillSelects() {
+    const list = usable(), keepA = $("pair-a").value, keepB = $("pair-b").value;
+    const options = list.map((ph) => `<option value="${ph.key}">${esc(ph.name)}</option>`).join("");
+    $("pair-a").innerHTML = options; $("pair-b").innerHTML = options;
+    $("pair-a").value = list.some((p) => p.key === keepA) ? keepA : list[0]?.key;
+    $("pair-b").value = list.some((p) => p.key === keepB) && keepB !== $("pair-a").value ? keepB : list[1]?.key;
+  }
+  const pick = () => [usable().find((p) => p.key === $("pair-a").value), usable().find((p) => p.key === $("pair-b").value)];
+
+  function renderWave(lagS) {
+    const g = setup(wave);
+    if (!a || !b) return;
+    const lenA = a.seconds, lenB = b.seconds;
+    const box = { l: 80, r: 1064, t: 14, b: 122 };
+    const { X } = plotArea(g, wave, box, -lenB, lenA, 0, 1, { noY: true, xTicks: 10, xFmt: (v) => v + " s" });
+    const laneA = box.t + 26, laneB = box.t + 78;
+    const o0 = Math.max(0, lagS), o1 = Math.min(lenA, lagS + lenB);
+    if (o1 > o0) { g.fillStyle = css("--band"); g.fillRect(X(o0), box.t, X(o1) - X(o0), box.b - box.t); }
+    drawEnvelope(g, a.env, X(0), X(lenA), laneA, 20, colorOf(a));
+    drawEnvelope(g, b.env, X(lagS), X(lagS + lenB), laneB, 20, colorOf(b));
+    g.fontPx(12, 500); g.fillStyle = css("--ink"); g.textAlign = "left"; g.textBaseline = "middle";
+    g.fillText(`A: ${a.name}`, 6, laneA); g.fillText(`B: ${b.name}`, 6, laneB);
+    g.fontPx(11); g.fillStyle = css("--ink-2"); g.textAlign = "right";
+    g.fillText(`B's start on A's clock: ${lagS.toFixed(3)} s${o1 > o0 ? ` · overlap ${(o1 - o0).toFixed(1)} s` : ""}`, box.r, box.t + 4);
+  }
+
+  function renderCorr() {
+    const g = setup(corr);
+    if (!result) return;
+    const f = result.trace.first, st = f.st;
+    const box = { l: 44, r: 688, t: 22, b: 208 };
+    const lo = f.lowest / RATE, hi = (f.lowest + st.length - 1) / RATE;
+    const peak = st[f.best];
+    const { X, Y } = plotArea(g, corr, box, lo, hi, 0, 1, { xTicks: 7, xFmt: (v) => v + " s", yFmt: (v) => v.toFixed(1) });
+    const cols = Math.round(box.r - box.l), shown = Math.floor(st.length * reveal);
+    g.fillStyle = css("--accent");
+    for (let c = 0; c < cols; c++) {
+      const i0 = Math.floor((c / cols) * st.length), i1 = Math.min(shown, Math.floor(((c + 1) / cols) * st.length));
+      if (i1 <= i0) break;
+      let m = 0;
+      for (let i = i0; i < i1; i++) m = Math.max(m, st[i]);
+      const y = Y(m / peak);
+      g.fillRect(box.l + c, y, 1, box.b - y);
+    }
+    if (reveal >= 1) {
+      const truth = a.related && b.related ? trueLag(a, b) : null;
+      if (truth !== null && truth >= lo && truth <= hi) {
+        g.setLineDash([3, 3]); g.strokeStyle = css("--ink-2");
+        g.beginPath(); g.moveTo(X(truth), box.t); g.lineTo(X(truth), box.b); g.stroke(); g.setLineDash([]);
+      }
+      const bx = X(f.lag / RATE);
+      g.fillStyle = css("--ink"); g.beginPath(); g.arc(bx, Y(1), 4.5, 0, 7); g.fill();
+      g.fontPx(11, 500); g.textAlign = bx > box.r - 120 ? "right" : "left"; g.textBaseline = "bottom";
+      g.fillText(`best ${(f.lag / RATE).toFixed(3)} s`, bx + (bx > box.r - 120 ? -8 : 8), Y(1) + 4);
+      if (f.runnerIdx >= 0) {
+        const rx = X((f.lowest + f.runnerIdx) / RATE), ry = Y(st[f.runnerIdx] / peak);
+        g.strokeStyle = css("--ink-2"); g.lineWidth = 1.5; g.beginPath(); g.arc(rx, ry, 4.5, 0, 7); g.stroke();
+        g.fontPx(11); g.fillStyle = css("--ink-2"); g.textAlign = rx > box.r - 90 ? "right" : "left";
+        g.fillText("next best", rx + (rx > box.r - 90 ? -8 : 8), ry - 4);
+      }
+    }
+  }
+
+  function renderZoom() {
+    const g = setup(zoom);
+    if (!result || reveal < 1) return;
+    const f = result.trace.first, st = f.st, peak = st[f.best];
+    const box = { l: 40, r: 428, t: 22, b: 208 };
+    const { X, Y } = plotArea(g, zoom, box, -300, 300, 0, 1, { xTicks: 6, xFmt: (v) => v + " ms", yFmt: (v) => v.toFixed(1) });
+    g.fillStyle = css("--band");
+    g.fillRect(X(-100), box.t, X(100) - X(-100), box.b - box.t);
+    g.fontPx(11); g.fillStyle = css("--ink-2"); g.textAlign = "center"; g.textBaseline = "bottom";
+    g.fillText("same match (±100 ms)", X(0), box.t - 2);
+    const runner = f.runnerIdx >= 0 ? st[f.runnerIdx] / peak : null;
+    if (runner !== null) {
+      g.setLineDash([4, 3]); g.strokeStyle = css("--ink-2");
+      g.beginPath(); g.moveTo(box.l, Y(runner)); g.lineTo(box.r, Y(runner)); g.stroke(); g.setLineDash([]);
+      g.textAlign = "right"; g.fillText("next best outside", box.r, Y(runner) - 3);
+    }
+    g.strokeStyle = css("--accent"); g.lineWidth = 2; g.beginPath();
+    for (let d = -300; d <= 300; d++) {
+      const i = f.best + Math.round((d * RATE) / 1000);
+      if (i < 0 || i >= st.length) continue;
+      const x = X(d), y = Y(st[i] / peak);
+      d === -300 ? g.moveTo(x, y) : g.lineTo(x, y);
+    }
+    g.stroke(); g.lineWidth = 1;
+  }
+
+  function tiles() {
+    if (!result) { $("pair-result").innerHTML = ""; return; }
+    const related = a.related && b.related, truth = related ? trueLag(a, b) : null;
+    const ok = result.confidence >= SETTINGS.min_confidence;
+    const err = truth === null ? null : (result.lag_s - truth) * 1000;
+    $("pair-result").innerHTML = `
+      <div class="tile"><span class="l">B starts on A's clock at</span><span class="v">${signed(result.lag_s, 3)} s</span><span class="s">${result.trace.stretched ? "after cancelling drift (step 4)" : "from the best spike"}</span></div>
+      <div class="tile"><span class="l">Hidden truth</span><span class="v">${truth === null ? "no match" : signed(truth, 3) + " s"}</span><span class="s">${truth === null ? "different event" : "error " + signed(err, 2) + " ms"}</span></div>
+      <div class="tile"><span class="l">Confidence</span><span class="v">${fmt(result.confidence, 1)}</span><span class="s"><span class="pill ${ok ? "ok" : "bad"}">${ok ? "usable, at least 2.0" : "set aside, under 2.0"}</span></span></div>
+      <div class="tile"><span class="l">Overlap</span><span class="v">${fmt(result.overlap_s, 1)} s</span><span class="s">at least 5 s needed</span></div>`;
+  }
+
+  async function run(animated = true) {
+    [a, b] = pick();
+    if (!a || !b || a === b) { $("pair-result").innerHTML = `<p class="note">Pick two different clips with sound.</p>`; return; }
+    const button = $("pair-run");
+    setBusy(button, true, "Matching…");
+    await nextFrame();
+    result = measureOffset(a.audio, b.audio, { beta: +$("pair-beta").value, keepTrace: true });
+    setBusy(button, false, "▶ Slide and match");
+    const f = result.trace.first;
+    if (animated) {
+      await animate(3200, (t) => {
+        reveal = t;
+        renderWave((f.lowest + t * (f.st.length - 1)) / RATE);
+        renderCorr(); renderZoom();
+      });
+    }
+    reveal = 1;
+    render();
+  }
+  function render() {
+    renderWave(result ? result.trace.first.lag / RATE : 0);
+    renderCorr(); renderZoom(); tiles();
+  }
+  hover(corr, (x) => {
+    if (!result || reveal < 1) return null;
+    const f = result.trace.first, box = { l: 44, r: 688 };
+    if (x < box.l || x > box.r) return null;
+    const i = Math.round(((x - box.l) / (box.r - box.l)) * (f.st.length - 1));
+    return `lag ${((f.lowest + i) / RATE).toFixed(3)} s<br>score ${(f.st[i] / f.st[f.best]).toFixed(3)} of the best`;
+  });
+  $("pair-run").addEventListener("click", () => run(true));
+  $("pair-beta").addEventListener("input", () => { $("pair-beta-out").textContent = (+$("pair-beta").value).toFixed(1); });
+  $("pair-beta").addEventListener("change", () => { if (result) run(false); });
+  for (const id of ["pair-a", "pair-b"]) $(id).addEventListener("change", () => { result = null; [a, b] = pick(); render(); });
+  return {
+    reset() { result = null; fillSelects(); [a, b] = pick(); },
+    render,
+    selected: () => pick(),
+    ensure: async () => { if (!result) await run(false); return result; },
+  };
+})();
+
+/* ================= 4. clock drift ================= */
+STAGES.drift = (() => {
+  const scatter = $("drift-scatter"), peaks = $("drift-peaks");
+  let lab = null, shownWindows = 0, showLine = false;
+
+  function makeLab(kind) {
+    const scene = makeScene(265, 4242, []);
+    const strong = kind === "strong";
+    const A = { key: "A", name: "Steady phone", color: "--s1", related: true, start: 0, seconds: 250, drift_ppm: 0, gain: 1, snr_db: strong ? 15 : 3, echo: 0.3, seed: 11 };
+    const B = { key: "B", name: strong ? "Old phone" : "Very fast clock", color: "--s2", related: true, start: 8.5, seconds: 240, drift_ppm: strong ? 270 : 800, gain: 0.5, snr_db: strong ? 12 : 2, echo: 0.4, seed: 12 };
+    A.audio = record(scene, A); B.audio = record(scene, B);
+    return { a: A, b: B, trueDrift: ((1 + B.drift_ppm * 1e-6) / (1 + A.drift_ppm * 1e-6) - 1) * 1e6 };
+  }
+
+  function activeDrift() {
+    if (!lab) return null;
+    const t = lab.result.trace;
+    return t.pieces && t.pieceDrift ? { d: t.pieceDrift, base: t.pieces.lag } : { d: t.drift, base: t.first.lag };
+  }
+
+  function renderScatter() {
+    const g = setup(scatter);
+    if (!lab) {
+      g.fontPx(13); g.fillStyle = css("--muted"); g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("Press “Measure drift” to cut the overlap into 10 s windows.", scatter._w / 2, scatter._h / 2);
+      return;
+    }
+    const { d, base } = activeDrift();
+    const pts = d.windows.map((w) => ({ ...w, y: (w.lag - base / RATE) * 1000 }));
+    const box = { l: 52, r: 688, t: 22, b: 246 };
+    const ts = pts.map((p) => p.t), ys = pts.map((p) => p.y);
+    const t0 = ts.length ? Math.min(...ts) - 5 : 0, t1 = ts.length ? Math.max(...ts) + 5 : 1;
+    let y0 = Math.min(-10, ...ys) - 5, y1 = Math.max(10, ...ys) + 5;
+    const { X, Y } = plotArea(g, scatter, box, t0, t1, y0, y1, { xTicks: 7, xFmt: (v) => v + " s", yFmt: (v) => v + " ms", xLabel: "time on A's clock" });
+    if (showLine && d.line) {
+      const line = (t) => (d.line.intercept + d.line.slope * t - base / RATE) * 1000;
+      g.fillStyle = css("--band"); g.beginPath();
+      g.moveTo(X(t0), Y(line(t0) + 5)); g.lineTo(X(t1), Y(line(t1) + 5)); g.lineTo(X(t1), Y(line(t1) - 5)); g.lineTo(X(t0), Y(line(t0) - 5)); g.closePath(); g.fill();
+      g.strokeStyle = css("--accent"); g.lineWidth = 2;
+      g.beginPath(); g.moveTo(X(t0), Y(line(t0))); g.lineTo(X(t1), Y(line(t1))); g.stroke(); g.lineWidth = 1;
+    }
+    pts.slice(0, shownWindows).forEach((p) => {
+      const on = showLine ? p.on : true;
+      g.beginPath(); g.arc(X(p.t), Y(p.y), 5, 0, 7);
+      if (on) { g.fillStyle = css("--accent"); g.fill(); g.strokeStyle = css("--surface"); g.lineWidth = 2; g.stroke(); }
+      else { g.strokeStyle = css("--axis"); g.lineWidth = 2; g.stroke(); }
+      g.lineWidth = 1;
+    });
+  }
+
+  function renderPeaks() {
+    const g = setup(peaks);
+    if (!lab || !showLine) return;
+    const t = lab.result.trace, before = t.first, after = t.again;
+    const box = { l: 40, r: 428, t: 22, b: 246 };
+    const top = Math.max(before.st[before.best], after?.st ? after.st[after.best] : 0);
+    const { X, Y } = plotArea(g, peaks, box, -80, 80, 0, 1, { xTicks: 4, xFmt: (v) => v + " ms", yFmt: (v) => v.toFixed(1) });
+    const curve = (m, color, width) => {
+      g.strokeStyle = color; g.lineWidth = width; g.beginPath();
+      for (let d = -80; d <= 80; d++) {
+        const i = m.best + d;
+        if (i < 0 || i >= m.st.length) continue;
+        d === -80 ? g.moveTo(X(d), Y(m.st[i] / top)) : g.lineTo(X(d), Y(m.st[i] / top));
+      }
+      g.stroke(); g.lineWidth = 1;
+    };
+    curve(before, css("--axis"), 2);
+    if (after?.st) curve(after, css("--accent"), 2);
+    g.fontPx(11, 500); g.textAlign = "left"; g.textBaseline = "top";
+    g.fillStyle = css("--ink-2"); g.fillText(`before: confidence ${fmt(before.confidence)}`, box.l + 6, box.t + 2);
+    if (after?.st) { g.fillStyle = css("--accent"); g.fillText(`after stretching: ${fmt(after.confidence)}`, box.l + 6, box.t + 18); }
+    else { g.fillStyle = css("--ink-2"); g.fillText("no stretch applied", box.l + 6, box.t + 18); }
+  }
+
+  function tiles() {
+    if (!lab) { $("drift-result").innerHTML = ""; return; }
+    const r = lab.result, t = r.trace;
+    const path = t.pieces ? (t.pieceDrift?.ppm !== null && t.pieceDrift ? "one-minute pieces" : "pieces tried, no line") : t.drift.ppm !== null ? "10 s windows" : "no line found";
+    const why = t.pieces ? "whole-clip match showed no line" : t.drift.reason || (t.stretched ? "stretched and matched again" : "drift too small to stretch");
+    $("drift-result").innerHTML = `
+      <div class="tile"><span class="l">Hidden truth</span><span class="v">${lab.trueDrift === null ? "—" : signed(lab.trueDrift, 1) + " ppm"}</span><span class="s">how much faster B's clock runs</span></div>
+      <div class="tile"><span class="l">Measured drift</span><span class="v">${r.drift_ppm === null ? "none" : signed(r.drift_ppm, 1) + " ppm"}</span><span class="s">${esc(path)}</span></div>
+      <div class="tile"><span class="l">Confidence</span><span class="v">${fmt(t.first.confidence)} → ${fmt(r.confidence)}</span><span class="s">${esc(why)}</span></div>
+      <div class="tile"><span class="l">Lag error</span><span class="v">${lab.trueLag === null ? "—" : signed((r.lag_s - lab.trueLag) * 1000, 2) + " ms"}</span><span class="s">B's start on A's clock</span></div>`;
+  }
+
+  async function run() {
+    const button = $("drift-run"), source = $("drift-source").value;
+    setBusy(button, true, "Measuring…");
+    $("drift-status").textContent = source === "pair" ? "" : "Recording 4 minutes of lab sound…";
+    await nextFrame();
+    let a, b, trueDrift, trueL;
+    if (source === "pair") {
+      [a, b] = STAGES.pair.selected();
+      if (!a || !b || a === b) { setBusy(button, false, "▶ Measure drift"); $("drift-status").textContent = "Pick two clips in step 3."; return; }
+      trueDrift = a.related && b.related ? ((1 + b.drift_ppm * 1e-6) / (1 + a.drift_ppm * 1e-6) - 1) * 1e6 : null;
+      trueL = a.related && b.related ? trueLag(a, b) : null;
+    } else {
+      const made = makeLab(source);
+      a = made.a; b = made.b; trueDrift = made.trueDrift; trueL = trueLag(a, b);
+    }
+    $("drift-status").textContent = "Matching…";
+    await nextFrame();
+    const result = measureOffset(a.audio, b.audio, { keepTrace: true });
+    lab = { a, b, result, trueDrift, trueLag: trueL };
+    setBusy(button, false, "▶ Measure drift");
+    const { d } = activeDrift();
+    $("drift-status").textContent = result.trace.pieces ? "The whole-clip match showed no line, so one-minute pieces found the lag first." : d.reason ? `No drift: ${d.reason}.` : "";
+    showLine = false; shownWindows = 0; renderPeaks(); tiles();
+    for (let i = 1; i <= d.windows.length; i++) { shownWindows = i; renderScatter(); await sleep(Math.max(40, 1600 / d.windows.length)); }
+    await sleep(300);
+    showLine = true; render();
+  }
+  function render() { renderScatter(); renderPeaks(); tiles(); }
+  hover(scatter, (x, y) => {
+    if (!lab) return null;
+    const { d, base } = activeDrift();
+    const box = { l: 52, r: 688 };
+    if (x < box.l || x > box.r || !d.windows.length) return null;
+    const ts = d.windows.map((w) => w.t), t0 = Math.min(...ts) - 5, t1 = Math.max(...ts) + 5;
+    const t = t0 + ((x - box.l) / (box.r - box.l)) * (t1 - t0);
+    const w = d.windows.reduce((p, q) => (Math.abs(q.t - t) < Math.abs(p.t - t) ? q : p));
+    return `window at ${w.t.toFixed(0)} s<br>lag ${signed((w.lag - base / RATE) * 1000, 2)} ms vs first match<br>${w.on ? "on the line" : "outlier, ignored"}`;
+  });
+  $("drift-run").addEventListener("click", run);
+  return { reset() { if ($("drift-source").value === "pair") lab = null; shownWindows = 0; showLine = false; $("drift-status").textContent = ""; }, render };
+})();
+</script>
+<script>
+/* ================= 5. solve all clips ================= */
+STAGES.solve = (() => {
+  const svg = $("solve-graph"), timeline = $("solve-timeline");
+  let view = { edges: {}, labels: {} }, running = false;
+  const byId = (id) => S.event.phones.find((ph) => ph.clip_id === id);
+  const pairKey = (p) => `${p.clip_a}-${p.clip_b}`;
+
+  async function measureAll(status) {
+    if (S.measured) return S.measured;
+    const usable = S.event.phones.filter((ph) => ph.sound), list = [];
+    const combos = [];
+    for (let i = 0; i < usable.length; i++) for (let j = i + 1; j < usable.length; j++) combos.push([usable[i], usable[j]]);
+    for (const [n, [a, b]] of combos.entries()) {
+      status(`Matching pair ${n + 1} of ${combos.length}: ${a.key}–${b.key}`);
+      await nextFrame();
+      const m = measureOffset(a.audio, b.audio);
+      list.push({ clip_a: a.clip_id, clip_b: b.clip_id, lag_s: m ? m.lag_s : null, confidence: m ? m.confidence : null,
+        overlap_s: m ? m.overlap_s : null, drift_ppm: m && m.drift_ppm !== null ? +m.drift_ppm.toFixed(3) : null });
+    }
+    S.measured = list;
+    return list;
+  }
+
+  function withWrongPair(measured) {
+    const pairs = measured.map((p) => ({ ...p }));
+    if (!$("solve-wrong").checked) return pairs;
+    const related = (p) => byId(p.clip_a).related && byId(p.clip_b).related;
+    const good = pairs.filter((p) => related(p) && p.confidence >= SETTINGS.min_confidence);
+    const target = good.sort((p, q) => q.overlap_s - p.overlap_s)[Math.min(good.length - 1, 1)];
+    if (target) { target.lag_s += 8.0; target.confidence = +$("solve-wrong-conf").value; target.injected = true; }
+    return pairs;
+  }
+
+  function layout() {
+    const ids = S.event.phones.filter((ph) => ph.sound).map((ph) => ph.clip_id), pos = {};
+    ids.forEach((id, i) => {
+      const angle = -Math.PI / 2 + (2 * Math.PI * i) / ids.length;
+      pos[id] = [320 + 175 * Math.cos(angle), 205 + 150 * Math.sin(angle)];
+    });
+    const muted = S.event.phones.find((ph) => !ph.sound);
+    if (muted) pos[muted.clip_id] = [590, 370];
+    return pos;
+  }
+
+  function drawGraph(pairs, states = {}, labels = {}) {
+    const pos = layout();
+    const edgeColor = { used: "var(--good)", inconsistent: "var(--critical)", aside: "var(--axis)", candidate: "var(--accent)", measured: "var(--axis)" };
+    let html = "";
+    for (const p of pairs) {
+      const [x1, y1] = pos[p.clip_a], [x2, y2] = pos[p.clip_b], state = states[pairKey(p)] || "measured";
+      const dash = state === "aside" ? ' stroke-dasharray="5 5"' : "";
+      const width = state === "used" || state === "inconsistent" ? 3 : 1.5;
+      html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${edgeColor[state]}" stroke-width="${width}"${dash}/>`;
+      const label = labels[pairKey(p)];
+      if (label) {
+        const mx = x1 + (x2 - x1) * 0.42, my = y1 + (y2 - y1) * 0.42;
+        html += `<rect x="${mx - 30}" y="${my - 9}" width="60" height="18" rx="4" fill="var(--surface)" stroke="var(--border)"/>`;
+        html += `<text x="${mx}" y="${my + 4}" text-anchor="middle" style="font-size:11px;font-variant-numeric:tabular-nums">${esc(label)}</text>`;
+      }
+    }
+    for (const ph of S.event.phones) {
+      const [x, y] = pos[ph.clip_id];
+      html += `<circle cx="${x}" cy="${y}" r="20" fill="var(${ph.color})" stroke="var(--surface)" stroke-width="3"/>`;
+      html += `<text x="${x}" y="${y + 4}" text-anchor="middle" style="font-weight:600;fill:#fff">${esc(ph.key)}</text>`;
+      html += `<text x="${x}" y="${y + 36}" text-anchor="middle" style="font-size:11px">${esc(ph.related ? ph.name : "other party")}</text>`;
+    }
+    svg.innerHTML = html;
+  }
+
+  function log(items) {
+    $("solve-log").innerHTML = items.map((it, i) => `<li class="${i === items.length - 1 ? "now" : ""}">${it}</li>`).join("");
+    $("solve-log").scrollTop = $("solve-log").scrollHeight;
+  }
+
+  function truthOffsets(solution) {
+    const placed = S.event.phones.filter((ph) => ph.related && ph.clip_id in solution.offsets);
+    if (!placed.length) return {};
+    const meanDrift = placed.reduce((s, ph) => s + ph.drift_ppm, 0) / placed.length;
+    const first = Math.min(...placed.map((ph) => ph.start));
+    const raw = Object.fromEntries(placed.map((ph) => [ph.clip_id, (ph.start - first) * (1 + meanDrift * 1e-6)]));
+    const shift = median(placed.map((ph) => solution.offsets[ph.clip_id] - raw[ph.clip_id]));
+    return Object.fromEntries(Object.entries(raw).map(([id, v]) => [id, v + shift]));
+  }
+
+  function drawTimeline(solution) {
+    const g = setup(timeline);
+    if (!solution) {
+      g.fontPx(13); g.fillStyle = css("--muted"); g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("Press “Solve” to place the clips on one clock.", timeline._w / 2, timeline._h / 2);
+      return;
+    }
+    const truth = truthOffsets(solution), phones = S.event.phones;
+    const ends = phones.filter((ph) => ph.clip_id in solution.offsets).map((ph) => solution.offsets[ph.clip_id] + ph.seconds);
+    const box = { l: 118, r: 1064, t: 14, b: 210 };
+    const { X } = plotArea(g, timeline, box, 0, Math.max(10, ...ends), 0, 1, { noY: true, xTicks: 10, xFmt: (v) => v + " s" });
+    const h = (box.b - box.t) / phones.length;
+    phones.forEach((ph, i) => {
+      const mid = box.t + i * h + h / 2;
+      g.fontPx(12, 500); g.fillStyle = css("--ink"); g.textAlign = "left"; g.textBaseline = "middle";
+      g.fillText(ph.name, 8, mid);
+      if (!(ph.clip_id in solution.offsets)) {
+        g.fontPx(11); g.fillStyle = css("--muted");
+        g.fillText(ph.sound ? "not placed: no confident match" : "not placed: no usable audio", box.l + 6, mid);
+        return;
+      }
+      const o = solution.offsets[ph.clip_id], w = ph.seconds / (1 + (solution.drift_ppm[ph.clip_id] || 0) * 1e-6);
+      g.fillStyle = colorOf(ph); g.globalAlpha = 0.85;
+      g.beginPath(); g.roundRect(X(o), mid - Math.min(10, h * 0.3), X(o + w) - X(o), 2 * Math.min(10, h * 0.3), 4); g.fill();
+      g.globalAlpha = 1;
+      if (ph.clip_id in truth) {
+        g.strokeStyle = css("--ink"); g.lineWidth = 2;
+        g.beginPath(); g.moveTo(X(truth[ph.clip_id]), mid - h * 0.42); g.lineTo(X(truth[ph.clip_id]), mid + h * 0.42); g.stroke(); g.lineWidth = 1;
+      }
+    });
+  }
+
+  function summary(solution) {
+    const truth = truthOffsets(solution);
+    const rows = S.event.phones.map((ph) => {
+      if (!(ph.clip_id in solution.offsets)) {
+        return `<b>${esc(ph.name)}</b> not placed: ${ph.sound ? "no confident audio match with the other clips" : "no usable audio"}${ph.related ? "" : " (correct: it was another event)"}`;
+      }
+      const err = ph.clip_id in truth ? (solution.offsets[ph.clip_id] - truth[ph.clip_id]) * 1000 : null;
+      const d = solution.drift_ppm[ph.clip_id];
+      return `<b>${esc(ph.name)}</b> at ${solution.offsets[ph.clip_id].toFixed(3)} s${err === null ? " — <b>wrongly placed: it was another event</b>" : `, ${signed(err, 2)} ms from the truth`}${d === null ? "" : ` · drift ${signed(d, 1)} ppm`}`;
+    });
+    $("solve-result").innerHTML = rows.join("<br>");
+  }
+
+  async function run() {
+    if (running) return;
+    running = true;
+    const button = $("solve-run"), status = (t) => { $("solve-status").textContent = t; };
+    setBusy(button, true, "Solving…");
+    const measured = withWrongPair(await measureAll(status));
+    const mode = $("solve-mode").value;
+    const order = S.event.phones.filter((ph) => ph.sound).sort((p, q) => q.seconds - p.seconds).map((ph) => ph.clip_id);
+    const solution = solveTimeline(order, measured, mode);
+    const name = (id) => byId(id).key;
+    const items = [`<b>Matched ${measured.length} pairs</b> of clips with sound${measured.some((p) => p.injected) ? ` (one is the wrong chorus match, confidence ${$("solve-wrong-conf").value})` : ""}.`];
+    const states = {}, labels = {};
+    for (const p of measured) labels[pairKey(p)] = p.confidence === null ? "—" : `c ${fmt(p.confidence)}`;
+    drawGraph(measured, states, labels); log(items); drawTimeline(null);
+    await sleep(900);
+    for (const step of solution.steps) {
+      if (step.kind === "screen") {
+        for (const p of step.aside) states[pairKey(p)] = "aside";
+        for (const p of measured) if (!states[pairKey(p)]) states[pairKey(p)] = "candidate";
+        items.push(step.aside.length ? `<b>Set aside ${step.aside.length}</b>: ${step.aside.map((p) => `${name(p.clip_a)}–${name(p.clip_b)} (${p.rejected === "short_overlap" ? "overlap under 5 s" : "confidence under 2"})`).join(", ")}.` : "<b>No pair set aside</b>: all overlap and match clearly.");
+      } else if (step.kind === "fit") {
+        for (const c of step.checks) labels[pairKey(c.p)] = `${fmt(c.score_ms, 1)} ms`;
+        const scoreName = mode === "plain" ? "plain residual" : "left-out residual";
+        items.push(`<b>Fit ${step.main.length} clips</b> from ${step.checks.length} pairs. Each label is the pair's ${scoreName}. Worst: ${fmt(step.worst_ms, 1)} ms ${step.worst_ms > SETTINGS.max_residual_ms ? "&gt; 20 ms limit" : "≤ 20 ms: done"}.`);
+      } else if (step.kind === "drop") {
+        const p = measured.find((m) => m.clip_a === step.pair.clip_a && m.clip_b === step.pair.clip_b);
+        states[pairKey(p)] = "inconsistent";
+        items.push(`<b>Dropped ${name(p.clip_a)}–${name(p.clip_b)}</b> as inconsistent${p.injected ? " — the wrong chorus match" : " — <b>but this pair was correct</b>"}. Solving again.`);
+      } else if (step.kind === "place") {
+        for (const p of solution.pairs) {
+          const k = pairKey(p);
+          if (p.used) { states[k] = "used"; labels[k] = `${signed(p.residual_ms, 1)} ms`; }
+          else if (p.rejected === "separate_group" || p.rejected === "low_confidence" || p.rejected === "short_overlap") states[k] = "aside";
+        }
+        const drifts = Object.entries(step.drift_ppm).filter(([, d]) => d !== null);
+        items.push(`<b>Placed ${Object.keys(step.offsets).length} clips</b> on the master clock (earliest at 0 s).${drifts.length ? ` Drift against the average clock: ${drifts.map(([id, d]) => `${name(id)} ${signed(d, 1)} ppm`).join(", ")}.` : " No overlap long enough to measure drift."}`);
+      }
+      drawGraph(measured, states, labels); log(items);
+      await sleep(1100);
+    }
+    S.solution = solution;
+    S.evaluation = null;
+    drawTimeline(solution); summary(solution);
+    status(mode === "plain" && measured.some((p) => p.injected) ? "The old solver trusts the confident wrong pair. Switch to “Today” and solve again." : "");
+    STAGES.output.render();
+    setBusy(button, false, "▶ Solve");
+    running = false;
+  }
+
+  async function ensure() {
+    if (S.solution) return S.solution;
+    const measured = withWrongPair(await measureAll((t) => { $("eval-status").textContent = t; }));
+    const order = S.event.phones.filter((ph) => ph.sound).sort((p, q) => q.seconds - p.seconds).map((ph) => ph.clip_id);
+    S.solution = solveTimeline(order, measured, $("solve-mode").value);
+    drawTimeline(S.solution); summary(S.solution); STAGES.output.render();
+    return S.solution;
+  }
+
+  $("solve-run").addEventListener("click", run);
+  $("solve-wrong-conf").addEventListener("input", () => { $("solve-wrong-out").textContent = $("solve-wrong-conf").value; });
+  for (const id of ["solve-wrong", "solve-wrong-conf", "solve-mode"]) $(id).addEventListener("change", () => { S.solution = null; S.evaluation = null; $("solve-status").textContent = "Settings changed: press Solve."; });
+  return {
+    reset() { S.solution = null; $("solve-log").innerHTML = ""; $("solve-result").innerHTML = ""; $("solve-status").textContent = ""; },
+    render() {
+      if (running) return;
+      if (S.event) drawGraph(S.measured || [], {}, {});
+      drawTimeline(S.solution);
+      if (S.solution) summary(S.solution);
+    },
+    ensure,
+  };
+})();
+
+/* ================= 6. check accuracy ================= */
+STAGES.evaluate = (() => {
+  const canvas = $("eval-claps");
+  let result = null;
+
+  function draw() {
+    const g = setup(canvas);
+    if (!result) {
+      g.fontPx(13); g.fillStyle = css("--muted"); g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("Press “Check claps” to put every phone's clap on the master clock.", canvas._w / 2, canvas._h / 2);
+      return;
+    }
+    const cols = result.moments.length, gap = 24, width = (canvas._w - 16 - gap * (cols - 1)) / cols;
+    result.moments.forEach((m, c) => {
+      const box = { l: 8 + c * (width + gap) + 10, r: 8 + c * (width + gap) + width - 10, t: 34, b: 184 };
+      g.fontPx(12, 500); g.fillStyle = css("--ink"); g.textAlign = "left"; g.textBaseline = "bottom";
+      g.fillText(`${m.label} · ${m.seen.length} clips`, box.l, box.t - 14);
+      if (m.seen.length < 2) {
+        g.fontPx(11); g.fillStyle = css("--muted"); g.textBaseline = "middle";
+        g.fillText("fewer than two placed clips caught it", box.l, (box.t + box.b) / 2);
+        return;
+      }
+      const centre = median(m.seen.map((s) => s.master));
+      const { X } = plotArea(g, canvas, box, -50, 50, 0, 1, { noY: true, xTicks: 4, xFmt: (v) => v + " ms" });
+      g.fillStyle = css("--band");
+      g.fillRect(X(-500 / 30), box.t, X(500 / 30) - X(-500 / 30), box.b - box.t);
+      const h = (box.b - box.t - 10) / m.seen.length;
+      m.seen.forEach((s, i) => {
+        const ms = Math.max(-50, Math.min(50, (s.master - centre) * 1000)), y = box.t + 5 + i * h + h / 2;
+        g.strokeStyle = colorOf(s.ph); g.lineWidth = 3;
+        g.beginPath(); g.moveTo(X(ms), y - h * 0.35); g.lineTo(X(ms), y + h * 0.35); g.stroke();
+        g.fillStyle = colorOf(s.ph); g.beginPath(); g.arc(X(ms), y, 4.5, 0, 7); g.fill();
+        g.fontPx(10); g.fillStyle = css("--ink-2"); g.textAlign = "left"; g.textBaseline = "middle";
+        g.fillText(s.ph.key, Math.min(box.r - 10, X(ms) + 8), y);
+      });
+      g.lineWidth = 1;
+    });
+  }
+
+  function tiles() {
+    if (!result) { $("eval-tiles").innerHTML = ""; $("eval-table").innerHTML = ""; return; }
+    const n = result.errors.length, w = result.worst;
+    $("eval-tiles").innerHTML = `
+      <div class="tile"><span class="l">Pair errors</span><span class="v">${n}</span><span class="s">at ${result.moments.filter((m) => m.seen.length > 1).length} claps</span></div>
+      <div class="tile"><span class="l">Median error</span><span class="v">${fmt(result.median, 2)} ms</span><span class="s">95th percentile ${fmt(result.p95, 2)} ms</span></div>
+      <div class="tile"><span class="l">Worst</span><span class="v">${w ? signed(w.error_ms, 2) : "—"} ms</span><span class="s">${w ? `${esc(w.a.key)}–${esc(w.b.key)} at ${w.moment}` : ""}</span></div>
+      <div class="tile"><span class="l">Within one frame</span><span class="v">${result.withinFrame} of ${n}</span><span class="s">${n ? Math.round((100 * result.withinFrame) / n) : 0}% (33 ms)</span></div>`;
+    $("eval-table").innerHTML = `<thead><tr><th>Clap</th><th>Clip A</th><th>Clip B</th><th>Error</th><th>One frame?</th></tr></thead><tbody>${result.errors.map((e) => {
+      const ok = Math.abs(e.error_ms) <= 1000 / 30;
+      return `<tr><td>${e.moment}</td><td><span class="swatch" style="background:var(${e.a.color})"></span>${esc(e.a.name)}</td><td><span class="swatch" style="background:var(${e.b.color})"></span>${esc(e.b.name)}</td><td>${signed(e.error_ms, 2)} ms</td><td><span class="pill ${ok ? "ok" : "bad"}">${ok ? "yes" : "no"}</span></td></tr>`;
+    }).join("")}</tbody>`;
+  }
+
+  async function run() {
+    const button = $("eval-run");
+    setBusy(button, true, "Checking…");
+    const solution = await STAGES.solve.ensure();
+    const nudgeKey = $("eval-nudge").checked ? S.event.phones.filter((ph) => ph.related && ph.clip_id in solution.offsets)[1]?.key : null;
+    result = evaluateClaps(S.event, solution, nudgeKey);
+    $("eval-status").textContent = nudgeKey ? `Phone ${nudgeKey} was pushed 50 ms late.` : "";
+    setBusy(button, false, "▶ Check claps");
+    draw(); tiles();
+  }
+  $("eval-run").addEventListener("click", run);
+  $("eval-nudge").addEventListener("change", () => { if (result) run(); });
+  return { reset() { result = null; $("eval-status").textContent = ""; }, render() { draw(); tiles(); } };
+})();
+
+/* ================= 7. output ================= */
+STAGES.output = (() => {
+  function render() {
+    const sol = S.solution;
+    if (!sol || !S.event) { $("out-json").textContent = "Run step 5 to fill this in."; return; }
+    const clips = S.event.phones.map((ph) => {
+      const placed = ph.clip_id in sol.offsets;
+      const conf = sol.pairs.filter((p) => p.used && (p.clip_a === ph.clip_id || p.clip_b === ph.clip_id)).map((p) => p.confidence);
+      return {
+        clip_id: ph.clip_id, name: ph.name, placed,
+        offset_s: placed ? +sol.offsets[ph.clip_id].toFixed(6) : null,
+        drift_ppm: placed && sol.drift_ppm[ph.clip_id] !== null ? +sol.drift_ppm[ph.clip_id].toFixed(2) : null,
+        duration_s: +ph.seconds.toFixed(3),
+        confidence: conf.length ? +Math.max(...conf).toFixed(2) : null,
+        reason: placed ? null : ph.sound ? "no confident audio match with the other clips" : "no usable audio",
+      };
+    });
+    const pairs = sol.pairs.map((p) => ({
+      clip_a: p.clip_a, clip_b: p.clip_b, lag_s: p.lag_s === null ? null : +p.lag_s.toFixed(6),
+      confidence: p.confidence === null ? null : +p.confidence.toFixed(2), overlap_s: p.overlap_s === null ? null : +p.overlap_s.toFixed(2),
+      drift_ppm: p.drift_ppm, used: p.used, rejected: p.rejected, residual_ms: p.residual_ms,
+    }));
+    const ends = clips.filter((c) => c.placed).map((c) => c.offset_s + c.duration_s);
+    const timeline = { schema_version: 1, event_id: `imaginary-${S.event.seed}`, settings: { analysis_rate: 8000, ...SETTINGS },
+      duration_s: ends.length ? +Math.max(...ends).toFixed(3) : 0, clips, pairs };
+    $("out-json").innerHTML = esc(JSON.stringify(timeline, null, 2)).replace(/&quot;([^&]+)&quot;:/g, '<span class="k">&quot;$1&quot;</span>:');
+  }
+  return { reset() { render(); }, render };
+})();
+
+/* ================= boot ================= */
+function renderAll() { for (const stage of Object.values(STAGES)) stage.render?.(); }
+S.seed = 20260918;
+STAGES.event.regenerate();
+document.fonts?.ready.then(renderAll);
+
+for (const q of ["(prefers-color-scheme: dark)"]) matchMedia(q).addEventListener("change", renderAll);
+new MutationObserver(renderAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+let resizeTimer = 0;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderAll, 150); });
+
+const navLinks = [...document.querySelectorAll("#stage-nav a")];
+const navWatch = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    navLinks.forEach((a) => a.classList.toggle("active", a.getAttribute("href") === "#" + entry.target.id));
+  }
+}, { rootMargin: "-45% 0px -50% 0px" });
+document.querySelectorAll("section.stage").forEach((section) => navWatch.observe(section));
+</script>

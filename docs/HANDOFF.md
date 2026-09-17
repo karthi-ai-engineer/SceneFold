@@ -20,6 +20,9 @@ session log at the bottom, commit, and push.
 - **Parallel agents are welcome** for independent work (Karthi asked for two agents in parallel).
   Give each agent strict file ownership; the main session does all git steps.
 - **Work until it's verified:** edge cases, tests, then report. Say plainly what is not yet tested.
+- **Keep the simulator current:** `docs/simulation.html` shows the built steps as an animation on
+  imaginary data, so Karthi can see how the project works. Extend it whenever a step lands; it is also
+  published as a private artifact (https://claude.ai/artifact/JP6GGmKYfcA6hQo7xX7Vip).
 - **Attribution rule (firm):** commits, PRs, and pushes credit only `karthi-ai-engineer`. No
   Co-Authored-By Claude, no "Generated with Claude Code". Enforced by `.claude/settings.json` and
   `.githooks/commit-msg`; details in `CLAUDE.md`. Don't enable Dependabot (its bot would appear as a

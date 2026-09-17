@@ -37,6 +37,9 @@ uv run python tools/jiku.py jiku-saf                  # real phone clips + sync 
 ## Working style
 
 - Work one phase at a time, in the order of `docs/ROADMAP.md`. Update its status table when a step lands.
+- `docs/simulation.html` animates what is built so far on imaginary data (Karthi uses it to follow the
+  project). When a pipeline step lands or its behaviour changes, add or update its section there
+  (instructions at the top of the file), keeping its maths in line with `src/scenefold/`.
 - Branches: one per phase (`phase-N-name`), started from `main` after the previous phase merged;
   merged back by fast-forward once CI is green, then deleted.
 - Never commit footage, generated media, model weights, or `.env`.
