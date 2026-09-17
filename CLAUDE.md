@@ -1,6 +1,7 @@
 # Scenefold
 
 Many phone videos of one event → one synced timeline, one cited story, one edited film.
+**Start of every session: read `docs/HANDOFF.md` first** (what happened before, how we work, next steps).
 Vision and firm principles: `docs/PROJECT_BRIEF.md`. Phases and current status: `docs/ROADMAP.md`.
 
 ## Git rules (firm)
@@ -36,4 +37,5 @@ uv run scenefold ingest <event> <videos or folders>   # writes data/<event>/
 - Branches: one per phase (`phase-N-name`), started from `main` after the previous phase merged;
   merged back by fast-forward once CI is green, then deleted.
 - Never commit footage, generated media, model weights, or `.env`.
-- Before ending a session (machines change often), commit and push so the next machine can continue.
+- Before ending a session (machines change often): add an entry to the session log in `docs/HANDOFF.md`,
+  update its "Where things stand" section, then commit and push so the next machine can continue.
