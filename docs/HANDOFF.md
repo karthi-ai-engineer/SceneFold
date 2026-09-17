@@ -94,8 +94,8 @@ uv run pytest                      # expect 201 passed, 1 xfailed (the known cho
    Nexus S difference.
 3. **Nexus S check.** If step 2 doesn't explain it, find a moment seen and heard by the Nexus S and
    another phone in `jiku-saf-long`, and see which placement is right.
-4. **Baselines** (audalign, audio-offset-finder) on the same Jiku audio: `tools/baselines.py` was being
-   written at the end of session 3; see the session log.
+4. ~~Baselines~~ **Done (session 3):** Scenefold is more accurate than audio-offset-finder and audalign
+   on both Jiku subsets (ROADMAP Phase 2); `tools/baselines.py`.
 5. Then PR `phase-2-sync` → `main`, fast-forward merge once CI is green, delete the branch.
 6. **Phase 3, synced viewer** → first demo `v0.1.0`. Use `1 + drift_ppm/1e6` as each clip's rate.
 7. Later (not Phase 2): a solver that weighs several candidate lags per pair would fix the repeated
@@ -216,3 +216,7 @@ uv run pytest                      # expect 201 passed, 1 xfailed (the known cho
    decoded audio), so it is recorded as unresolved.
 5. Chorus heard by a bridging clip stays a known limit (strict xfail). README documents sync,
    evaluate, measured accuracy, and limits.
+6. An agent compared audio-offset-finder and audalign on the same WAVs (`tools/baselines.py`, Python 3.12
+   via uv, no install hacks): Scenefold was most accurate on both subsets. The baselines also put the
+   Nexus S ~80 ms from the ground truth; since every method read our WAVs, that still leaves the WAV
+   time base (next step 2) as the open question.

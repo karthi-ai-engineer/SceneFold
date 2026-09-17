@@ -81,7 +81,9 @@ Pieces exist; the whole chain does not.
 ## What this means for Scenefold
 
 1. **Sync is the foundation, not the novelty.** Our method matches proven research, so measure it
-   honestly against audalign / audio-offset-finder and publish the numbers.
+   honestly against audalign / audio-offset-finder and publish the numbers. First numbers
+   (2026-09-18, two Jiku subsets, see ROADMAP Phase 2): Scenefold median 2.4–4.5 ms, audio-offset-finder
+   3.9–7.3 ms, audalign 10.8–14.6 ms; Scenefold also measures clock drift, which neither baseline does.
 2. **The novel value is the combination and Layer 2:** a cited account of one event with visible
    disagreements, plus angle choice based on what happens (not who talks), for crowd phone footage.
 3. **AI is weakest exactly there** (~50–63% on cross-video reasoning), which supports our principles:

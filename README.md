@@ -51,7 +51,9 @@ speech recognition is involved: music, claps, cheering, and background talk all 
 [Jiku dataset](https://traces.cs.umass.edu/docs/traces/multimedia/), sync agrees with its published
 ground truth within 4.3 ms when the clips overlap for about three minutes, and within 26 ms for
 80-second overlaps, for five of six phones. The sixth (a Nexus S) differs by 70–110 ms; which side is
-right is not settled yet.
+right is not settled yet. On the same clips it was more accurate than
+[audio-offset-finder](https://github.com/bbc/audio-offset-finder) and
+[audalign](https://github.com/benfmiller/audalign) (`tools/baselines.py`).
 
 **Known limits.** Sound that repeats exactly, like the same recorded song played twice, can match
 the wrong place when only two clips share it. A phone that moves while filming shifts its sound by

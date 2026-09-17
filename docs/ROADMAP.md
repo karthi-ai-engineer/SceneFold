@@ -11,7 +11,7 @@ Last updated: 2026-09-17
 |---|---|---|---|---|
 | 0 | Foundation | — | 1 | Done |
 | 1 | Ingest | 1 | 1 | Done on generated clips; recheck with real phone footage |
-| 2 | Sync | 2 | 1–2 | In progress: sync with drift works on synthetic and real (Jiku) clips; home recording, ingest audio timing, baselines left |
+| 2 | Sync | 2 | 1–2 | In progress: sync with drift works on synthetic and real (Jiku) clips, ahead of two baselines; home recording and ingest audio timing left |
 | 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Not started |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Not started |
 | 5 | Clip understanding | 4 | 2 | Not started |
@@ -177,6 +177,19 @@ The claps give ground truth for sync error and clock drift.
   | `jiku-saf`, ~80 s overlap | 6 of 6 | 3.8 s | 13.2 / 99.9 / 110.7 ms | 68% | 8.7 / 20.7 / 25.8 ms, 100% |
   | `jiku-saf-long`, ~174 s overlap | 6 of 6 | 7.1 s | 3.3 / 81.2 / 88.4 ms | 68% | 2.5 / 4.1 / 4.3 ms, 100% |
 
+- Baselines on the same working WAVs and ground truth (`tools/baselines.py`, Python 3.12 via uv). Lag
+  error per pair at clip start, 10 pairs without the Nexus S, median / worst in ms, and run time:
+
+  | Method | `jiku-saf` | `jiku-saf-long` | Time (short / long) |
+  |---|---|---|---|
+  | Scenefold, solved timeline | 4.5 / 13.0 | 2.4 / 3.8 | 4.2 / 7.2 s |
+  | Scenefold, raw pair measurement | 3.3 / 42.1 | 2.0 / 5.1 | (same run) |
+  | audio-offset-finder 0.5.5 (MFCC, 16 ms steps) | 7.3 / 50.1 | 3.9 / 11.6 | 17.2 / 30.0 s |
+  | audalign 1.3.1 (correlation; `fine_align` adds nothing) | 14.6 / 29.2 | 10.8 / 18.2 | 8.7 / 11.8 s |
+
+  No method made a wrong match (> 1 s). On the Nexus S pairs, both baselines land 66–84 ms (median)
+  from the ground truth, like Scenefold. That proves the matching on our WAVs, not the WAVs' time
+  base, so the Nexus S question stays open.
 - Findings from real clips:
   - **Nexus S disagrees with the ground truth by 70–110 ms** (16 kHz AAC, edit lists), in both
     subsets, while its pairs agree with each other and our drift for it differs too (−310 vs −165 ppm
@@ -196,7 +209,7 @@ The claps give ground truth for sync error and clock drift.
   matches the wrong place, and a clip that heard both repeats makes the true pairs ambiguous
   (strict xfail test). Fixing it needs a solver that weighs several candidate lags per pair.
 - Left: home clap recording; ingest audio timing check (all Jiku clips, soft `aresample` compensation);
-  Nexus S visual check; baselines (audalign, audio-offset-finder) on the Jiku subsets.
+  Nexus S visual check.
 
 ---
 
@@ -386,6 +399,8 @@ Checked 2026-09-17. Versions, model names, and prices change quickly, so recheck
   - audio-offset-finder 0.5.5 (Apache-2.0): `--no-deps` works with numpy 2. CLI
     `audio-offset-finder --find-offset-of B --within A --json`. MFCC correlation, 16 ms resolution,
     compares only the first ~32 s of one file, no drift handling.
+  - Simplest: run both outside the project on Python 3.12, where their pins install cleanly:
+    `uv run --no-project --python 3.12 --with audalign --with audio-offset-finder python tools/baselines.py <events>`.
 
 **Viewer (Phase 3)**
 - `requestVideoFrameCallback` works in all major browsers since Oct 2024. https://caniuse.com/mdn-api_htmlvideoelement_requestvideoframecallback
