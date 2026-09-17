@@ -63,7 +63,9 @@ uv run pytest                      # expect 167 passed
 | 2 Sync | **In progress**: core works on synthetic audio | branch `phase-2-sync` (not merged) |
 | 3–9 | Not started | |
 
-- `main` = `dcaf74e`. `phase-2-sync` = 3 commits ahead (timeline contract, synthetic audio, sync).
+- `main` = `dcaf74e`. `phase-2-sync` is ahead of `main` with the sync work (timeline contract,
+  synthetic audio, sync) and docs (this handoff, `docs/RELATED_WORK.md`). Check with
+  `git log --oneline origin/main..origin/phase-2-sync`.
 - PR #1 (Phases 0+1) merged by fast-forward; the old phase branches were deleted.
 - CI: 167 tests pass on Ubuntu, Windows, macOS for `phase-2-sync`.
 
