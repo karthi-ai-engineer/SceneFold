@@ -27,8 +27,11 @@ Needs FFmpeg (with ffprobe) and `uv` on PATH.
 ```sh
 uv sync                                   # create .venv and install
 uv run pytest                             # all tests (generates tiny test videos with FFmpeg)
-uv run ruff format src tests && uv run ruff check src tests
+uv run ruff format src tests tools && uv run ruff check src tests tools
 uv run scenefold ingest <event> <videos or folders>   # writes data/<event>/
+uv run scenefold sync <event>                         # writes data/<event>/timeline.json
+uv run scenefold evaluate <event> <truth.json>        # sync error against ground truth moments
+uv run python tools/jiku.py jiku-saf                  # real phone clips + sync ground truth (786 MB)
 ```
 
 ## Working style
