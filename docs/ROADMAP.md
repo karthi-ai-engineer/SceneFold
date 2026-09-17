@@ -30,11 +30,13 @@ fusion afterward is cheap. A basic director's cut (Phase 4) comes early because 
 ## How we work (keeps the repo clean)
 
 - **One phase at a time.** Start the next phase only when the current one meets its "Done when" list.
-- **One branch per phase**, e.g. `phase-1-ingest`. Commit small and often.
-  **Push at the end of every session**, even mid-phase, because we switch machines.
+- **One branch per phase, in a chain:** each phase branch starts from `main` right after the previous
+  phase was merged, so it builds on everything before it (e.g. `phase-2-sync`, then `phase-3-viewer`).
+  Commit in small, meaningful steps. **Push at the end of every session**, even mid-phase, because we switch machines.
+- **Fixes to earlier phases** go on the current phase branch; old phase branches are never reopened.
 - **Commit messages** follow Conventional Commits: `feat(sync): add GCC-PHAT pair measurement`, `test(ingest): …`, `docs: …`.
-- **Finishing a phase:** CI green → PR into `main` → squash merge → update the Status table above.
-  Milestone phases (3, 7, 9) also get a version tag.
+- **Finishing a phase:** CI green → PR into `main` → fast-forward merge (commits stay exactly as written)
+  → delete the phase branch → update the Status table above. Milestone phases (3, 7, 9) also get a version tag.
 - **`main` always works:** lint and tests pass on every commit to `main`.
 - **Never commit** footage, generated media, model weights, API keys, or `.env`.
 - **Attribution:** commits credit only `karthi-ai-engineer` (enforced; see [`CLAUDE.md`](../CLAUDE.md)).

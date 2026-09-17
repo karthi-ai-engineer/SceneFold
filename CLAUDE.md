@@ -33,5 +33,7 @@ uv run scenefold ingest <event> <videos or folders>   # writes data/<event>/
 ## Working style
 
 - Work one phase at a time, in the order of `docs/ROADMAP.md`. Update its status table when a step lands.
+- Branches: one per phase (`phase-N-name`), started from `main` after the previous phase merged;
+  merged back by fast-forward once CI is green, then deleted.
 - Never commit footage, generated media, model weights, or `.env`.
 - Before ending a session (machines change often), commit and push so the next machine can continue.
