@@ -1,8 +1,15 @@
 """The sync contract: what `data/<event_id>/timeline.json` holds.
 
-Every clip gets an `offset_s`: where its clip time 0 sits on the master timeline (the shared clock).
-A frame at clip time t_local plays at t_master = offset_s + t_local. Master time 0 is the start of
-the earliest placed clip.
+Every placed clip gets an `offset_s`: where its clip time 0 sits on the master timeline (the shared
+clock). Master time 0 is the start of the earliest placed clip. Phone clocks run slightly fast or
+slow, so each clip also gets a `drift_ppm`: how much faster its clock ran than the master clock, in
+parts per million (the master clock is the average of the clips whose drift could be measured;
+None counts as 0). The two times convert as:
+
+    t_local  = (t_master - offset_s) * (1 + drift_ppm / 1e6)
+    t_master = offset_s + t_local / (1 + drift_ppm / 1e6)
+
+A player can use `1 + drift_ppm / 1e6` directly as the clip's playback rate.
 """
 
 import json
@@ -28,6 +35,8 @@ class SyncSettings(BaseModel):
     min_overlap_s: float = Field(5.0, gt=0)  # shorter overlaps are too unreliable to use
     min_confidence: float = Field(2.0, gt=0)  # pairs below this are not used
     max_residual_ms: float = Field(20.0, gt=0)  # pairs disagreeing more than this are dropped
+    window_s: float = Field(10.0, gt=0)  # drift is measured from windows of this length
+    max_drift_ppm: float = Field(200.0, ge=0)  # clock drift beyond this is not searched for
 
 
 class PairMeasurement(BaseModel):
@@ -35,9 +44,10 @@ class PairMeasurement(BaseModel):
 
     clip_a: str
     clip_b: str
-    lag_s: float | None  # clip B's time 0 is lag_s seconds after clip A's (None: not measurable)
+    lag_s: float | None  # on A's clock, B's time 0 is this much after A's (None: not measurable)
     confidence: float | None
     overlap_s: float | None  # how long both clips were recording at that lag
+    drift_ppm: float | None = None  # how much faster B's clock ran than A's (None: too short)
     used: bool = False  # True when the solver used this pair to place clips
     rejected: str | None = None  # short_overlap, low_confidence, inconsistent, or separate_group
     residual_ms: float | None = None  # disagreement with the solved offsets
@@ -48,6 +58,7 @@ class ClipPlacement(BaseModel):
     name: str  # original file name, for people reading the file
     placed: bool
     offset_s: float | None = None  # t_master of this clip's time 0
+    drift_ppm: float | None = None  # how much faster this clip's clock ran than the master clock
     duration_s: float
     confidence: float | None = None  # best confidence among the pairs that placed it
     reason: str | None = None  # why it could not be placed

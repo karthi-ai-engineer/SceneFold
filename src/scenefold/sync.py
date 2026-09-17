@@ -2,11 +2,13 @@
 
 Every pair of clips with usable audio is compared (see audio_offset.py). The pairwise lags are then
 solved together with weighted least squares, dropping pairs that disagree with the rest. Clips that
-never overlap directly are still placed through the clips between them.
+never overlap directly are still placed through the clips between them. Clock drift measured on
+long pairs is solved the same way, so each clip also gets its own clock rate.
 """
 
 from itertools import combinations
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 
@@ -34,13 +36,21 @@ class SyncError(Exception):
     """The run cannot start: bad event name, or no usable manifest."""
 
 
-def solve_offsets(
-    clip_ids: list[str], pairs: list[PairMeasurement], settings: SyncSettings
-) -> tuple[dict[str, float], list[PairMeasurement]]:
-    """Solve clip offsets from pairwise lags (pure).
+class Solution(NamedTuple):
+    offsets: dict[str, float]  # t_master of each placed clip's time 0
+    drift_ppm: dict[str, float | None]  # each placed clip against the master clock
+    pairs: list[PairMeasurement]  # marked used or rejected
 
-    Returns the offsets of the main group (the most clips; ties go to the most total confidence,
-    then to clips listed first), with the earliest clip at 0, and the pairs marked used or rejected.
+
+def solve_timeline(
+    clip_ids: list[str], pairs: list[PairMeasurement], settings: SyncSettings
+) -> Solution:
+    """Solve clip offsets and clock drift from pairwise measurements (pure).
+
+    Places the main group (the most clips; ties go to the most total confidence, then to clips
+    listed first), with the earliest clip at 0. Each pair is judged against the offsets solved
+    without it, so one confident wrong pair can't pull the solution toward itself and push
+    correct pairs out.
     """
     pairs = [pair.model_copy() for pair in pairs]
     candidates: list[PairMeasurement] = []
@@ -55,28 +65,34 @@ def solve_offsets(
         else:
             candidates.append(pair)
     if not clip_ids:
-        return {}, pairs
+        return Solution({}, {}, pairs)
 
     while True:
         main = _main_group(clip_ids, candidates)
         inside = [p for p in candidates if p.clip_a in main]
-        offsets = _least_squares(main, inside)
-        residuals = [abs(_residual_ms(p, offsets)) for p in inside]
-        if inside and max(residuals) > settings.max_residual_ms:
-            worst = inside[int(np.argmax(residuals))]
-            worst.rejected = "inconsistent"
-            candidates.remove(worst)
-            continue
-        break
+        drift = _solve_drift(main, inside)
+        offsets, residuals, left_out = _least_squares(main, inside, drift)
+        worst = max((abs(r) for r in left_out), default=0.0)
+        if worst * 1000 <= settings.max_residual_ms:
+            break
+        # Around a single loop of pairs every pair disagrees equally: drop the least confident.
+        tied = [p for p, r in zip(inside, left_out, strict=True) if abs(r) >= worst - 1e-6]
+        dropped = min(tied, key=lambda p: p.confidence)
+        dropped.rejected = "inconsistent"
+        candidates.remove(dropped)
 
+    for pair, residual in zip(inside, residuals, strict=True):
+        pair.used = True
+        pair.residual_ms = round(residual * 1000, 3)
     for pair in candidates:
-        if pair.clip_a in main:
-            pair.used = True
-            pair.residual_ms = round(_residual_ms(pair, offsets), 3)
-        else:
+        if pair.clip_a not in main:
             pair.rejected = "separate_group"
     earliest = min(offsets.values())
-    return {clip: offset - earliest for clip, offset in offsets.items()}, pairs
+    return Solution(
+        offsets={clip: offset - earliest for clip, offset in offsets.items()},
+        drift_ppm={clip: drift.get(clip) for clip in main},
+        pairs=pairs,
+    )
 
 
 def _main_group(clip_ids: list[str], pairs: list[PairMeasurement]) -> list[str]:
@@ -102,26 +118,57 @@ def _main_group(clip_ids: list[str], pairs: list[PairMeasurement]) -> list[str]:
     return max(groups.values(), key=rank)
 
 
-def _least_squares(group: list[str], pairs: list[PairMeasurement]) -> dict[str, float]:
-    """Offsets for one connected group with its first clip fixed at 0, weighted by confidence."""
+def _solve_drift(group: list[str], pairs: list[PairMeasurement]) -> dict[str, float]:
+    """Drift of every clip that has a drift measurement, against the average of their clocks.
+
+    A longer overlap pins drift down much more precisely, so pairs weigh by overlap^3.
+    """
+    measured = [p for p in pairs if p.drift_ppm is not None]
+    clips = [c for c in group if any(c in (p.clip_a, p.clip_b) for p in measured)]
+    if not measured:
+        return {}
+    column = {clip: i for i, clip in enumerate(clips)}
+    rows = np.zeros((len(measured), len(clips)))
+    values = np.zeros(len(measured))
+    for row, pair in enumerate(measured):
+        weight = (pair.overlap_s or 0.0) ** 1.5
+        rows[row, column[pair.clip_b]] = weight
+        rows[row, column[pair.clip_a]] = -weight
+        values[row] = weight * pair.drift_ppm
+    # the minimum-norm solution averages 0 within each connected set of clips
+    solution = np.linalg.lstsq(rows, values, rcond=None)[0]
+    return {clip: float(solution[i]) for clip, i in column.items()}
+
+
+def _least_squares(
+    group: list[str], pairs: list[PairMeasurement], drift: dict[str, float]
+) -> tuple[dict[str, float], np.ndarray, np.ndarray]:
+    """Offsets for one connected group with its first clip fixed at 0, weighted by confidence.
+
+    Also returns each pair's residual (seconds) and its left-out residual: how far the pair is
+    from the offsets solved without it, residual / (1 - leverage). A pair that alone joins two
+    parts of the group can't be checked and gets 0.
+    """
     if len(group) == 1:
-        return {group[0]: 0.0}
+        return {group[0]: 0.0}, np.zeros(0), np.zeros(0)
     column = {clip: i - 1 for i, clip in enumerate(group)}  # the first clip has no column
     rows = np.zeros((len(pairs), len(group) - 1))
     values = np.zeros(len(pairs))
-    for row, pair in enumerate(pairs):
-        weight = np.sqrt(pair.confidence)
+    weights = np.sqrt([pair.confidence for pair in pairs])
+    for row, (pair, weight) in enumerate(zip(pairs, weights, strict=True)):
         if column[pair.clip_b] >= 0:
             rows[row, column[pair.clip_b]] = weight
         if column[pair.clip_a] >= 0:
             rows[row, column[pair.clip_a]] = -weight
-        values[row] = weight * pair.lag_s
+        # lag_s is on A's clock; master seconds are (1 + drift) times longer
+        values[row] = weight * pair.lag_s / (1 + drift.get(pair.clip_a, 0.0) * 1e-6)
     solution = np.linalg.lstsq(rows, values, rcond=None)[0]
-    return {clip: 0.0 if i < 0 else float(solution[i]) for clip, i in column.items()}
-
-
-def _residual_ms(pair: PairMeasurement, offsets: dict[str, float]) -> float:
-    return (offsets[pair.clip_b] - offsets[pair.clip_a] - pair.lag_s) * 1000
+    residuals = (rows @ solution - values) / weights
+    leverage = np.einsum("ij,ji->i", rows, np.linalg.pinv(rows))
+    free = 1 - leverage
+    left_out = np.divide(residuals, free, out=np.zeros_like(residuals), where=free > 1e-9)
+    offsets = {clip: 0.0 if i < 0 else float(solution[i]) for clip, i in column.items()}
+    return offsets, residuals, left_out
 
 
 def sync_event(
@@ -155,6 +202,8 @@ def sync_event(
             settings.analysis_rate,
             beta=settings.phat_beta,
             min_overlap_s=settings.min_overlap_s,
+            window_s=settings.window_s,
+            max_drift_ppm=settings.max_drift_ppm,
         )
         measured.append(
             PairMeasurement(
@@ -163,24 +212,27 @@ def sync_event(
                 lag_s=found.lag_s if found else None,
                 confidence=found.confidence if found else None,
                 overlap_s=found.overlap_s if found else None,
+                drift_ppm=_rounded(found.drift_ppm if found else None, 3),
             )
         )
 
     # longest clips first, so a tie between equally matched groups keeps the longer footage
     order = sorted(usable, key=lambda clip: -clip.proxy.duration_s)
-    offsets, pairs = solve_offsets([clip.clip_id for clip in order], measured, settings)
+    solution = solve_timeline([clip.clip_id for clip in order], measured, settings)
+    pairs = solution.pairs
 
     placements = []
     for clip in manifest.clips:
         duration = clip.proxy.duration_s if clip.proxy else (clip.source.duration_s or 0.0)
-        if clip.clip_id in offsets:
+        if clip.clip_id in solution.offsets:
             best = [p.confidence for p in pairs if p.used and clip.clip_id in (p.clip_a, p.clip_b)]
             placements.append(
                 ClipPlacement(
                     clip_id=clip.clip_id,
                     name=clip.source.name,
                     placed=True,
-                    offset_s=round(offsets[clip.clip_id], 6),
+                    offset_s=round(solution.offsets[clip.clip_id], 6),
+                    drift_ppm=_rounded(solution.drift_ppm[clip.clip_id], 2),
                     duration_s=duration,
                     confidence=max(best) if best else None,
                 )
@@ -196,7 +248,9 @@ def sync_event(
                 )
             )
 
-    ends = [p.offset_s + p.duration_s for p in placements if p.placed]
+    ends = [
+        p.offset_s + p.duration_s / (1 + (p.drift_ppm or 0) * 1e-6) for p in placements if p.placed
+    ]
     timeline = Timeline(
         event_id=event_id,
         created_at=now(),
@@ -207,6 +261,10 @@ def sync_event(
     )
     save_timeline(event_dir, timeline)
     return timeline
+
+
+def _rounded(value: float | None, digits: int) -> float | None:
+    return None if value is None else round(value, digits)
 
 
 def _unusable_reason(clip: Clip, event_dir: Path) -> str | None:

@@ -107,7 +107,8 @@ def _print_timeline(timeline: Timeline) -> None:
     for clip in placed:
         where = f"{clip.offset_s:+10.3f} s  {clip.duration_s:6.1f} s"
         confidence = f"  confidence {clip.confidence:.1f}" if clip.confidence is not None else ""
-        print(f"  {clip.name:<{width}}  {where}{confidence}")
+        drift = f"  drift {clip.drift_ppm:+.1f} ppm" if clip.drift_ppm is not None else ""
+        print(f"  {clip.name:<{width}}  {where}{confidence}{drift}")
     for clip in unplaced:
         print(f"  {clip.name:<{width}}  not placed: {clip.reason}")
     rejected = Counter(p.rejected for p in timeline.pairs if p.rejected)

@@ -6,7 +6,7 @@ import wave
 import numpy as np
 import pytest
 from scipy import signal
-from synth import RATE, Phone, record, scene, write_wav
+from synth import RATE, Phone, loop, record, scene, write_wav
 
 from scenefold.audio_offset import EXCLUSION_S, load_audio, measure_offset
 from scenefold.timeline import SyncSettings
@@ -129,6 +129,88 @@ def test_nan_samples_are_ignored(event):
 
 def test_exclusion_zone_covers_room_reflections():
     assert EXCLUSION_S >= 0.08  # synth echoes reach 71 ms; real rooms similar
+
+
+# --- repetitive music
+
+
+def live_loop(crowd: float) -> np.ndarray:
+    """Looped music plus a crowd at the given level (0 = the music alone)."""
+    music = loop(120, seed=1, rate=ANALYSIS_RATE)
+    return music + scene(120, seed=4, rate=ANALYSIS_RATE) * crowd
+
+
+def music_pair(crowd: float) -> tuple[np.ndarray, np.ndarray]:
+    heard = live_loop(crowd)
+    a = record(heard, Phone(0.0, 60, snr_db=20, echo=0.3, seed=1), rate=ANALYSIS_RATE)
+    b = record(heard, Phone(13.3, 50, snr_db=20, echo=0.3, seed=2), rate=ANALYSIS_RATE)
+    return a, b
+
+
+@pytest.mark.parametrize("crowd", [0.0, 0.03, 0.1, 0.3, 1.0])
+def test_repeating_music_is_matched_right_or_not_at_all(crowd):
+    measured = measure_offset(*music_pair(crowd), ANALYSIS_RATE)
+    print(f"crowd {crowd}: lag {measured.lag_s:.4f} s, confidence {measured.confidence:.2f}")
+    if measured.confidence >= THRESHOLD:
+        assert measured.lag_s == pytest.approx(13.3, abs=0.002)
+
+
+def test_music_that_repeats_exactly_is_not_trusted():
+    measured = measure_offset(*music_pair(0.0), ANALYSIS_RATE)
+    assert measured.confidence < THRESHOLD  # every bar sounds the same, so any bar could match
+
+
+def test_repeating_music_with_a_crowd_is_matched():
+    measured = measure_offset(*music_pair(0.3), ANALYSIS_RATE)
+    assert measured.lag_s == pytest.approx(13.3, abs=0.002)
+    assert measured.confidence > THRESHOLD
+
+
+# --- clock drift
+
+
+@pytest.fixture(scope="module")
+def long_event() -> np.ndarray:
+    return scene(640, seed=5, rate=ANALYSIS_RATE)
+
+
+@pytest.mark.parametrize(("seconds", "ppm"), [(120, 40.0), (300, -25.0), (600, 100.0)])
+def test_clock_drift_is_measured_and_cancelled(long_event, seconds, ppm):
+    a = record(long_event, Phone(0.0, seconds + 10, snr_db=20, echo=0.3, seed=1), ANALYSIS_RATE)
+    steady = Phone(7.25, seconds, snr_db=20, echo=0.3, seed=2)
+    drifting = Phone(7.25, seconds, snr_db=20, echo=0.3, seed=2, drift_ppm=ppm)
+
+    reference = measure_offset(a, record(long_event, steady, ANALYSIS_RATE), ANALYSIS_RATE)
+    measured = measure_offset(a, record(long_event, drifting, ANALYSIS_RATE), ANALYSIS_RATE)
+    print(f"{seconds} s at {ppm:+} ppm: measured {measured.drift_ppm:+.2f} ppm, confidence "
+          f"{measured.confidence:.1f} (steady clocks {reference.confidence:.1f})")  # fmt: skip
+    assert measured.lag_s == pytest.approx(7.25, abs=0.001)
+    assert measured.drift_ppm == pytest.approx(ppm, abs=2)
+    # without cancelling it, 600 s at 100 ppm smears the peak to a confidence under 2
+    assert measured.confidence > 0.7 * reference.confidence
+
+
+def test_steady_clocks_read_as_no_drift(long_event):
+    a = record(long_event, Phone(0.0, 200, snr_db=15, echo=0.4, seed=1), ANALYSIS_RATE)
+    b = record(long_event, Phone(31.5, 150, snr_db=15, echo=0.4, seed=2), ANALYSIS_RATE)
+    measured = measure_offset(a, b, ANALYSIS_RATE)
+    assert measured.drift_ppm == pytest.approx(0.0, abs=2)
+    assert measured.lag_s == pytest.approx(31.5, abs=0.001)
+
+
+def test_drift_needs_a_long_enough_overlap(event):
+    a, b = pair(event, Phone(0.0, 30, seed=1), Phone(6.0, 24, seed=2, drift_ppm=50))
+    measured = measure_offset(a, b, ANALYSIS_RATE)
+    assert measured.drift_ppm is None  # 24 s holds only two 10 s windows
+    assert measured.lag_s == pytest.approx(6.0, abs=0.001)
+
+
+def test_unrelated_recordings_get_no_drift(event):
+    a = analysis(record(event, Phone(0.0, 60, seed=1)))
+    b = analysis(record(scene(60, seed=21), Phone(0.0, 60, seed=2)))
+    measured = measure_offset(a, b, ANALYSIS_RATE)
+    assert measured.confidence < THRESHOLD
+    assert measured.drift_ppm is None
 
 
 # --- loading audio
