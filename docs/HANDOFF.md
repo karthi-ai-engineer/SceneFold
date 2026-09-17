@@ -49,7 +49,7 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch phase-2-sync            # current work branch (see "Where things stand")
 uv sync
-uv run pytest                      # expect 167 passed
+uv run pytest                      # expect 201 passed, 1 xfailed (the known chorus limit)
 ```
 
 - **Clone outside OneDrive/Dropbox.** Windows often syncs Desktop and Documents; footage in `data/` and
@@ -63,35 +63,43 @@ uv run pytest                      # expect 167 passed
 
 ---
 
-## Where things stand (session 2, 2026-09-17)
+## Where things stand (session 3, 2026-09-17)
 
 | Phase | Status | Where |
 |---|---|---|
 | 0 Foundation | Done | `main` |
-| 1 Ingest | Done on generated clips; **never run on real phone footage** | `main` |
-| 2 Sync | **In progress**: core works on synthetic audio | branch `phase-2-sync` (not merged) |
+| 1 Ingest | Done; ran on 12 real Jiku phone clips (all ok). Audio timing issue found, see next steps | `main` |
+| 2 Sync | **In progress**: drift-aware sync measured on real clips (Jiku); a few checks left | branch `phase-2-sync` (not merged) |
 | 3–9 | Not started | |
 
-- `main` = `dcaf74e`. `phase-2-sync` is ahead of `main` with the sync work (timeline contract,
-  synthetic audio, sync) and docs (this handoff, `docs/RELATED_WORK.md`). Check with
-  `git log --oneline origin/main..origin/phase-2-sync`.
-- PR #1 (Phases 0+1) merged by fast-forward; the old phase branches were deleted.
-- CI: 167 tests pass on Ubuntu, Windows, macOS for `phase-2-sync`.
+- `main` = `dcaf74e`. `phase-2-sync` is ahead with all sync work, `scenefold evaluate`,
+  `tools/jiku.py`, and docs. Check with `git log --oneline origin/main..origin/phase-2-sync`.
+- Results and findings are in `docs/ROADMAP.md`, Phase 2 "Progress". In short: on two real Jiku
+  subsets, 5 of 6 phones agree with the published ground truth within 4.3 ms (174 s overlaps) and
+  26 ms (80 s overlaps); the Nexus S differs by 70–110 ms, cause unknown.
+- Jiku data is local only: `data/_downloads/jiku/` (clips, ground truth XML and JSON), workspaces
+  `data/jiku-saf/` and `data/jiku-saf-long/`. On a new machine, `uv run python tools/jiku.py jiku-saf`
+  fetches it again (786 MB; `jiku-saf-long` is 1.54 GB).
 
 ### Next steps, in order
 
-1. ~~Set up the Predator~~ **Done (session 2):** specs verified (table above); 167 tests pass locally
-   in 31 s with FFmpeg 9.0.1 (full build, has `zscale`) and uv 0.12.15; lint clean.
-2. **Real footage.** Karthi records ~1 minute with 2–3 phones at once, with a visible clap at the start
-   and at the end. Run `scenefold ingest` then `scenefold sync` on it. First real check of both phases.
-3. **Finish Phase 2** on `phase-2-sync`:
-   - Evaluation script: sync error in ms against ground truth (the claps; a small subset of the Jiku
-     mobile video dataset, which has sample-accurate sync ground truth; see ROADMAP research notes).
-   - Windowed check: measure each pair's offset in ~10 s windows (confidence cross-check and clock
-     drift estimate).
-   - Repetitive music cases (a wrong match one beat off should be rejected, not used).
-   - Then PR `phase-2-sync` → `main`, fast-forward merge once CI is green, delete the branch.
-4. **Phase 3, synced viewer** → first demo `v0.1.0`.
+1. **Home clap recording (Karthi).** ~1 minute, 2–3 phones at once, a visible, sharp clap at the start
+   and the end, some walking. Then `scenefold ingest`, `sync`, and `evaluate` with the clap times
+   (README "Checking sync with claps"). First check of visual (not just audio) sync.
+2. **Ingest audio timing (Phase 1 fix, on this branch).** For every Jiku clip compare the WAV's sample
+   count with the audio container timestamps. Galaxy S II runs ~310 ppm ahead, so
+   `aresample=async=1` cuts a 100 ms jump after ~5 min, and picture and sound slip ~60 ms per 200 s.
+   Try soft compensation (`aresample=async=<N>`, which stretches smoothly) while keeping the flash and
+   click tests within 5 ms; decide which clock a working copy follows. This may also explain the
+   Nexus S difference.
+3. **Nexus S check.** If step 2 doesn't explain it, find a moment seen and heard by the Nexus S and
+   another phone in `jiku-saf-long`, and see which placement is right.
+4. **Baselines** (audalign, audio-offset-finder) on the same Jiku audio: `tools/baselines.py` was being
+   written at the end of session 3; see the session log.
+5. Then PR `phase-2-sync` → `main`, fast-forward merge once CI is green, delete the branch.
+6. **Phase 3, synced viewer** → first demo `v0.1.0`. Use `1 + drift_ppm/1e6` as each clip's rate.
+7. Later (not Phase 2): a solver that weighs several candidate lags per pair would fix the repeated
+   chorus case (strict xfail test in `tests/test_sync.py`).
 
 ### Open questions / decisions still pending
 
@@ -115,9 +123,22 @@ uv run pytest                      # expect 167 passed
   with `fps=30:start_time=0` and `aresample=48000:async=1:first_pts=0` (verified: flash and click land
   within 0.1 ms even when a track starts late).
 - **Sync:** GCC-PHAT with β = 0.8 at 8 kHz; search only lags with ≥ 5 s overlap; confidence = best
-  peak ÷ best peak outside ±100 ms (threshold 2.0; unrelated audio scores ~1.05–1.14, real matches
-  23+ on synthetic data). Weighted least squares over all pairs, iteratively dropping pairs off by more
-  than 20 ms; clips placed through other clips; unplaceable clips get a plain reason, never forced.
+  peak ÷ best peak outside ±100 ms (threshold 2.0; unrelated audio ~1.0–1.1; synthetic matches 20–45,
+  real Jiku pairs 2–11, so never tune thresholds on synthetic numbers). Weighted least squares over
+  all pairs; clips placed through other clips; unplaceable clips get a plain reason, never forced.
+  β was swept 0.6–1.0 on music, noise, echo, unrelated audio: 0.8 stays the best balance.
+- **Clock drift (session 3):** the model is `t_local = (t_master − offset_s)(1 + drift_ppm/1e6)`, with
+  the master clock = the average of the clips whose drift was measured. Per pair: first whole-clip
+  match → lag in 10 s windows searched ±(50 ms + 1000 ppm × overlap) → Theil–Sen line (more than half
+  the windows, ≥ 3, spanning ≥ 20 s) → stretch B, match again (kept only if confidence doesn't drop).
+  No line → match up to 4 one-minute pieces (both clips ≥ 2 min). Per-clip drift = least squares over
+  pair drifts weighted by overlap³. Measured from sound; video may differ on some devices.
+- **Solver outliers (session 3):** a pair is judged by its left-out residual (residual ÷ (1 − leverage)),
+  not its plain residual, because a confident wrong pair pulls the fit toward itself. Around a single
+  loop of 3 pairs all tie; then the least confident pair goes. Threshold still 20 ms.
+- **Evaluation:** ground truth = moments with a clip time per clip; error per pair of placed clips
+  (independent of where master time 0 is); report median, p95, worst, pairs within 33 ms.
+- **`tools/`:** developer scripts that aren't part of the pipeline (dataset fetch, baselines); linted in CI.
 - **Later phases (planned):** analyze each clip independently with the VLM (independent witnesses make
   disagreements meaningful); SQLite instead of Neo4j; citations validated in code; director's cut
   switches picture but keeps one continuous audio track; license Apache-2.0 (YOLO/BoxMOT are AGPL, so
@@ -137,6 +158,14 @@ uv run pytest                      # expect 167 passed
 - **Style:** ruff's formatter explodes long FFmpeg argument lists, so commands are written as
   `"-a b -c d".split()` (rule SIM905 is ignored on purpose).
 - **Auto mode** once refused a merge to `main` without review; Karthi then delegated merges explicitly.
+- **Claude Code sessions** started before uv/FFmpeg were installed keep a stale PATH. In PowerShell,
+  prefix commands with `$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' +
+  [Environment]::GetEnvironmentVariable('Path','Machine');`. PowerShell 5.1 mangles here-strings piped
+  to `git commit -F -`; write the message to a file and use `git commit -F <file>`.
+- **Timing:** the test suite takes ~41 s on the Predator, but ~150 s while an agent runs FFmpeg ingest.
+- **Real phone audio is messier than FFmpeg's view of it:** sample counts that disagree with timestamps
+  (Galaxy S II), a first-packet timestamp jump (Galaxy Nexus), edit lists (Nexus S), clipped concert
+  sound, phones that move. Check ingest against real clips, not only generated ones.
 
 ---
 
@@ -169,3 +198,21 @@ uv run pytest                      # expect 167 passed
 2. Verified the Predator: RTX 4060 Laptop 8 GB and 16 GB RAM (not the reported RTX 3060).
 3. Cloned to `C:\dev\SceneFold` instead of the OneDrive-synced Desktop; installed FFmpeg 9.0.1 and uv;
    set identity and hooks; `uv sync`; 167 tests pass, lint clean.
+
+### Session 3: 2026-09-17, Acer Predator
+
+1. Measured before building: clock drift smears the whole-clip match (10 min at 100 ppm fell to
+   confidence 1.9 with a 27 ms error). Found a solver bug: with 4 clips, one wrong pair at confidence
+   20+ pushed two correct pairs out.
+2. Prototyped the windowed check in the scratchpad on drift, unrelated audio, looped music, a
+   repeated chorus, and a muffled phone. Windows as a confidence gate failed on music, so they only
+   measure drift. Built drift measurement + cancelling, drift per clip, and left-out residuals.
+3. A research agent found real drift up to 274 ppm (Galaxy S II) and 417 ppm (iPod touch), the Jiku
+   ground truth format, and why both baselines fail to install on Python 3.13. Raised the drift
+   search to 1000 ppm; added one-minute pieces for strong drift over long overlaps.
+4. Built `scenefold evaluate` (ground-truth moments). An agent built `tools/jiku.py` and ran two
+   Jiku subsets: all 12 clips placed; results and real-audio findings in ROADMAP Phase 2 "Progress".
+   Its claim that the ground truth is wrong for the Nexus S was not proven (its check used our own
+   decoded audio), so it is recorded as unresolved.
+5. Chorus heard by a bridging clip stays a known limit (strict xfail). README documents sync,
+   evaluate, measured accuracy, and limits.

@@ -11,7 +11,7 @@ Last updated: 2026-09-17
 |---|---|---|---|---|
 | 0 | Foundation | — | 1 | Done |
 | 1 | Ingest | 1 | 1 | Done on generated clips; recheck with real phone footage |
-| 2 | Sync | 2 | 1–2 | In progress: `scenefold sync` works on synthetic audio; real-footage checks next |
+| 2 | Sync | 2 | 1–2 | In progress: sync with drift works on synthetic and real (Jiku) clips; home recording, ingest audio timing, baselines left |
 | 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Not started |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Not started |
 | 5 | Clip understanding | 4 | 2 | Not started |
@@ -143,8 +143,8 @@ The claps give ground truth for sync error and clock drift.
 - Real test set: a small subset of the Jiku phone dataset with its sync ground truth (see research notes),
   plus a home recording from 2–3 phones with a clap at the start and end.
 - Pair measurement: GCC-PHAT with soft whitening (β ≈ 0.8) for all clip pairs.
-- Confidence per pair: peak strength vs. the next-best peak, plus agreement across ~10 s windows
-  (the windows also estimate clock drift).
+- Confidence per pair: peak strength vs. the next-best peak. ~10 s windows measure clock drift
+  (as a confidence check they fail on music, see Progress).
 - Global solve: weighted least squares over all pairs, iterative outlier rejection, cycle-consistency
   check (A→B plus B→C must equal A→C).
 - Report clips that can't be placed (no audio, no confident overlap) with the reason.
@@ -153,17 +153,50 @@ The claps give ground truth for sync error and clock drift.
 
 **Done when**
 - Synthetic set: median error ≤ 10 ms, and the unrelated clip is rejected.
-- Jiku subset: error measured against ground truth and reported (target: 95% of clips within one frame, 33 ms).
+- Jiku subset: error measured against ground truth and reported (target: 95% of clip pairs within one
+  frame, 33 ms; pairs, because a clip's error only exists relative to another clip).
 - Overlaps shorter than ~5 s come out low-confidence instead of wrongly placed.
 
 **Progress (2026-09-17)**
-- Done: `timeline.json` contract (`src/scenefold/timeline.py`); synthetic event audio (`tests/synth.py`);
-  pair measurement with GCC-PHAT-β and a peak-vs-runner-up confidence (`audio_offset.py`); weighted
-  least-squares solve that drops inconsistent pairs and places clips through other clips (`sync.py`);
-  `scenefold sync <event>`.
-- Measured on synthetic phones (10–30 dB noise, echo, different volumes): offset error about 0.02 ms;
-  related pairs score 23–40+ confidence, unrelated audio 1.05–1.14 (threshold 2.0); a 5-minute pair takes 0.3 s.
-- Left: windowed drift check, evaluation on the Jiku subset and the home recording, repetitive-music cases.
+- Done:
+  - `timeline.json` contract with offset and clock drift per clip (`timeline.py`).
+  - Synthetic event audio with noise, echo, volume, clock drift, and looped music (`tests/synth.py`).
+  - Pair measurement (`audio_offset.py`): GCC-PHAT-β with a peak-vs-runner-up confidence. Drift comes
+    from the lag in 10 s windows (a Theil–Sen line); B is stretched to cancel it and matched again.
+    When strong drift hides the whole-clip match, one-minute pieces find it.
+  - Solver (`sync.py`): weighted least squares for offsets and per-clip drift (against the average
+    clock). Each pair is judged against the solve without it, so a confident wrong pair can't win.
+  - `scenefold sync`, `scenefold evaluate` with ground-truth moments (`evaluate.py`), `tools/jiku.py`.
+- Synthetic: offsets within 0.2 ms with drift up to 460 ppm and overlaps up to 20 min; unrelated audio
+  scores 1.0–1.1 (threshold 2.0). Without drift handling, 10 min at 100 ppm had fallen to 1.9.
+- Jiku, event SAF_290512: two subsets of 6 clips from 3 phone models (Galaxy S II, Galaxy Nexus,
+  Nexus S). Pair errors at moments every 10 s against the published ground truth:
+
+  | Subset | Placed | Sync time | All pairs: median / p95 / worst | Within 33 ms | Without the Nexus S |
+  |---|---|---|---|---|---|
+  | `jiku-saf`, ~80 s overlap | 6 of 6 | 3.8 s | 13.2 / 99.9 / 110.7 ms | 68% | 8.7 / 20.7 / 25.8 ms, 100% |
+  | `jiku-saf-long`, ~174 s overlap | 6 of 6 | 7.1 s | 3.3 / 81.2 / 88.4 ms | 68% | 2.5 / 4.1 / 4.3 ms, 100% |
+
+- Findings from real clips:
+  - **Nexus S disagrees with the ground truth by 70–110 ms** (16 kHz AAC, edit lists), in both
+    subsets, while its pairs agree with each other and our drift for it differs too (−310 vs −165 ppm
+    in the long subset). Every other phone agrees within a frame. The cause is on one side's audio
+    decoding or timestamps; unresolved. A moment both seen and heard by it and another phone settles it.
+  - **Ingest audio timing (Phase 1):** Galaxy S II audio has ~310 ppm more samples than its container
+    timestamps say. `aresample=async=1` would cut a 100 ms jump into the WAV after ~5 minutes, and
+    picture and sound in its working copy slip ~60 ms per 200 s. Galaxy Nexus's first audio packet
+    jumps 14–19 ms, which the WAV ignores. None of the test clips is long enough to hit the jump.
+  - **Moving phones:** the lag between two Galaxy Nexus clips stepped by ~15 ms within a minute (a
+    phone moving ~5 m, or lost audio). A straight drift line can't follow that (errors up to 26 ms).
+    Sound-based sync is limited by path changes: about 3 ms per metre.
+  - Checking whether windows agree does not work as a confidence test for music (beats repeat inside
+    the search range), so windows only measure drift.
+  - 11 of 12 Jiku clips were flagged for clipped audio (0.5–5.4% of samples): the flag may be too eager.
+- Known limit: identical repeated sound (a recorded chorus played twice) shared by only two clips
+  matches the wrong place, and a clip that heard both repeats makes the true pairs ambiguous
+  (strict xfail test). Fixing it needs a solver that weighs several candidate lags per pair.
+- Left: home clap recording; ingest audio timing check (all Jiku clips, soft `aresample` compensation);
+  Nexus S visual check; baselines (audalign, audio-offset-finder) on the Jiku subsets.
 
 ---
 
@@ -333,6 +366,26 @@ Checked 2026-09-17. Versions, model names, and prices change quickly, so recheck
 - Real test data: the Jiku Mobile Video Dataset (473 phone clips) is still downloadable
   https://traces.cs.umass.edu/docs/traces/multimedia/, with sample-accurate sync ground truth at
   https://github.com/protyposis/JikuMVD-SynchronizationGroundTruth
+  - Files one by one: `https://skulddata.cs.umass.edu/traces/mmsys/2013/jiku/dataset/<name>.mp4`
+    (no archive). Five events with ground truth, 50–143 clips each, 6 s to 40 min, ~130 GB in total.
+    CC BY 4.0 (the repository's default); cite Saini et al., MMSys 2013. Real people: keep it local.
+  - Ground truth: one XML per event. Each recording has `offset` (a .NET TimeSpan from the event's
+    earliest recording) and `speed`; a moment at clip time t sits at `offset + speed * t`, so
+    `drift_ppm = (1/speed - 1) * 1e6`. Only clips linked by hand-set syncpoints are reliable.
+    The repository has no license: download it at run time, never commit it.
+- Clock drift is large on some phones (Guggenberger et al., MMM 2015, 16 devices, 90-minute recordings):
+  - Audio: Galaxy S II 274 ppm (16 ms/min), iPod touch 4G 417 ppm; most others −15 to +17 ppm.
+    Same model varies by ~1.5 ppm; temperature adds up to ~10 ppm. Newer phones (Pixel 6a/7,
+    LibriWASN 2023) measured about 14–17 ppm.
+  - Drift settles into a straight line after ~10 min of warm-up.
+  - Video can drift differently from audio (Acer Iconia: audio +13, video −554 ppm).
+  - https://protyposis.net/files/mmm2015-timedrift-cameraready.pdf
+- Baselines on Python 3.13 (checked 2026-09-17): both pin old numpy and fail a plain install.
+  - audalign 1.3.1 (MIT): install with `--no-deps`, then numpy, scipy, pydub, `audioop-lts`; Python API
+    `align_files(...)`; turn off multiprocessing on Windows. Its confidence is relative only.
+  - audio-offset-finder 0.5.5 (Apache-2.0): `--no-deps` works with numpy 2. CLI
+    `audio-offset-finder --find-offset-of B --within A --json`. MFCC correlation, 16 ms resolution,
+    compares only the first ~32 s of one file, no drift handling.
 
 **Viewer (Phase 3)**
 - `requestVideoFrameCallback` works in all major browsers since Oct 2024. https://caniuse.com/mdn-api_htmlvideoelement_requestvideoframecallback

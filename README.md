@@ -12,9 +12,9 @@ and trustworthy picture of what happened.**
 
 ## Status
 
-Early development. **Ingest works today**; syncing the clips onto one clock and a synced multi-angle
-viewer come next. Later phases add a cited story of the event, where the cameras disagree, and an
-automatic edit. See the [roadmap](docs/ROADMAP.md) and the [project brief](docs/PROJECT_BRIEF.md).
+Early development. **Ingest and sync work today**; a synced multi-angle viewer comes next. Later
+phases add a cited story of the event, where the cameras disagree, and an automatic edit. See the
+[roadmap](docs/ROADMAP.md) and the [project brief](docs/PROJECT_BRIEF.md).
 
 ## What ingest does
 
@@ -33,6 +33,32 @@ data/<event>/
 ├─ proxies/        working copies (<clip>.mp4) and their sound (<clip>.wav)
 └─ manifest.json   what each clip is, where its files are, and any problems
 ```
+
+## What sync does
+
+`scenefold sync <event>` puts the event's clips on one master timeline by comparing their sound. No
+speech recognition is involved: music, claps, cheering, and background talk all help.
+
+- Compares every pair of clips that have sound, and scores how clearly each match beats the next-best one.
+- Measures and cancels clock drift: phone audio clocks run a few to a few hundred parts per million
+  fast or slow, which adds up to tens of milliseconds over a few minutes.
+- Solves all pairs together and drops pairs that disagree with the rest, so one bad match can't
+  move the other clips. Clips that never overlap are placed through the clips between them.
+- Writes `timeline.json` with each clip's offset, drift, and confidence, every pair measurement, and
+  the reason for any clip it could not place. A clip is never forced onto the timeline.
+
+**Measured accuracy.** On real phone clips of a live event from the
+[Jiku dataset](https://traces.cs.umass.edu/docs/traces/multimedia/), sync agrees with its published
+ground truth within 4.3 ms when the clips overlap for about three minutes, and within 26 ms for
+80-second overlaps, for five of six phones. The sixth (a Nexus S) differs by 70–110 ms; which side is
+right is not settled yet.
+
+**Known limits.** Sound that repeats exactly, like the same recorded song played twice, can match
+the wrong place when only two clips share it. A phone that moves while filming shifts its sound by
+about 3 ms per metre. Clips without usable sound can't be placed yet.
+
+`scenefold evaluate <event> <truth.json>` measures sync error against ground truth: moments such as
+claps, with their time in each clip that caught them.
 
 ## Requirements
 
@@ -94,12 +120,46 @@ Manifest: data/my-event/manifest.json
 Run the same command again and finished clips show `unchanged`. Event names use letters, digits,
 `-` and `_`. Use `--data-dir` to keep events somewhere other than `./data`.
 
+```sh
+uv run scenefold sync my-event
+```
+
+```
+Event my-event: 2 of 2 clips on one clock (master timeline 30.0 s)
+  VID_20260917_153012.mp4      +0.000 s    30.0 s  confidence 12.4
+  IMG_4821.MOV                +18.480 s    10.0 s  confidence 12.4
+Pairs: 1 measured, 1 used
+Timeline: data/my-event/timeline.json
+```
+
+A clip's offset is where its first frame sits on the shared clock. When two clips overlap for about
+30 seconds or more, each line also shows the clip's clock drift.
+
+### Checking sync with claps
+
+Film a few sharp claps that every phone hears, near the start and the end. Find each clap's time in
+every clip, for example by stepping frame by frame through the working copies in
+`data/<event>/proxies/`, and write them down:
+
+```json
+{"moments": [
+  {"label": "first clap", "times": {"VID_20260917_153012.mp4": 19.100, "IMG_4821.MOV": 0.620}},
+  {"label": "last clap",  "times": {"VID_20260917_153012.mp4": 28.233, "IMG_4821.MOV": 9.753}}
+]}
+```
+
+```sh
+uv run scenefold evaluate my-event claps.json
+```
+
+Clips are named by file name, or by clip ID when two files share a name.
+
 ## Development
 
 ```sh
 uv run pytest                      # all tests; they generate small test videos with FFmpeg
-uv run ruff format src tests
-uv run ruff check src tests
+uv run ruff format src tests tools
+uv run ruff check src tests tools
 ```
 
 The maintainer's clones use a commit guard that only accepts the maintainer's GitHub identity:
@@ -113,8 +173,10 @@ git config core.hooksPath .githooks
 ## Project layout
 
 ```
-src/scenefold/   pipeline code: cli, ingest, media (FFmpeg), manifest (data format)
+src/scenefold/   pipeline code: cli, ingest, media (FFmpeg), manifest and timeline (data formats),
+                 audio_offset and sync (matching clips by sound), evaluate (sync error)
 tests/           tests
+tools/           developer scripts, e.g. fetching a public dataset to measure sync on real footage
 web/             viewer and UI (planned)
 docs/            project brief and roadmap
 data/            your events; never committed
