@@ -1,7 +1,7 @@
 # Scenefold Roadmap
 
 We build Scenefold one phase at a time. Each phase ends with something that runs, is tested, and is measured.
-The vision and firm principles live in [`PROJECT_BRIEF.md`](../PROJECT_BRIEF.md). This file covers **what to build next** and **when a phase counts as done**.
+The vision and firm principles live in [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md). This file covers **what to build next** and **when a phase counts as done**.
 
 Last updated: 2026-09-17
 
@@ -9,7 +9,7 @@ Last updated: 2026-09-17
 
 | Phase | Name | Brief outcomes | Rough size (3 h sessions) | Status |
 |---|---|---|---|---|
-| 0 | Foundation | — | 1 | In progress (CI, license, sync test data left) |
+| 0 | Foundation | — | 1 | Done |
 | 1 | Ingest | 1 | 1 | Done on generated clips; recheck with real phone footage |
 | 2 | Sync | 2 | 1–2 | Not started |
 | 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Not started |
@@ -70,32 +70,27 @@ data/<event_id>/
 
 ## Phase 0: Foundation
 
-**Goal:** a clean, tested skeleton that runs on any machine, plus test data to measure against.
+**Goal:** a clean, tested skeleton that runs on any machine, checked automatically on every push.
 **Runs on:** any laptop (CPU).
 
 **Steps**
 - [x] Git repo, remote, commit identity guard (`.githooks/`), `CLAUDE.md`, `.gitattributes`, Claude attribution off
 - [x] Top-level folders: `src/`, `web/`, `tests/`, `docs/`, `data/`
 - [x] `.gitignore` (keeps `data/` out of GitHub)
-- [ ] Move brief and logo into `docs/` (update links in `CLAUDE.md`); README stub
-- [ ] Choose a license (see decision below)
+- [x] Brief and logo moved into `docs/`; `README.md` with install, quick start, and responsible use
+- [x] License: Apache-2.0 (`LICENSE`, declared in `pyproject.toml`)
 - [x] `uv` project on Python 3.13; ruff + pytest
-- [ ] GitHub Actions CI on Windows, macOS, Ubuntu
+- [x] GitHub Actions CI (`.github/workflows/ci.yml`): lint and all tests on Windows, macOS, and Ubuntu
+- [x] Tests for the commit guard (`tests/test_commit_guard.py`)
 - [x] CLI: `scenefold ingest` (`sync` and `view` arrive with their phases)
 - [x] Data contract for `manifest` (Pydantic models in `src/scenefold/manifest.py`)
-- [ ] Data contract for `timeline` (Phase 2).
-      Rule: every time field is named `t_local` or `t_master`, never a bare `t`.
-- [ ] Synthetic test generator: one source recording → N fake phone clips with known offsets, noise, echo,
-      gain changes, clock drift, plus one unrelated clip
-- [ ] Real test set: a small subset of the Jiku phone dataset with its sync ground truth (see research notes)
 
 **Done when**
-- A fresh clone + `uv sync` + `uv run pytest` passes locally and in CI.
-- The synthetic generator saves the true offsets alongside the clips it creates.
+- A fresh clone + `uv sync` + `uv run pytest` passes locally and in CI on Windows, macOS, and Ubuntu.
 
-**Decision: license.** Ultralytics YOLO and BoxMOT are AGPL-3.0; using them makes the whole repo AGPL.
-Recommendation: start with **Apache-2.0** and plan a permissive vision stack for Phase 8 (RF-DETR, supervision, torchreid; verify their licenses then).
-As the sole author you can still switch to AGPL in Phase 8 if YOLO proves clearly better.
+**Decision: license — Apache-2.0** (decided 2026-09-17). Ultralytics YOLO and BoxMOT are AGPL-3.0 and would make
+the whole repo AGPL, so Phase 8 plans a permissive vision stack (RF-DETR, supervision, torchreid; verify their
+licenses then). As the sole author you can still switch to AGPL in Phase 8 if YOLO proves clearly better.
 
 **Non-code task (any time before Phase 5): film the test event.** 3–5 consenting friends, 2–5 minutes,
 people in clearly different clothes. At the start and end, one person claps visibly in view of every phone.
@@ -140,6 +135,11 @@ The claps give ground truth for sync error and clock drift.
 **Brief outcome:** 2 · **Runs on:** CPU
 
 **Steps**
+- Data contract for `timeline`. Rule: every time field is named `t_local` or `t_master`, never a bare `t`.
+- Synthetic test generator: one source recording → N fake phone clips with known offsets, noise, echo,
+  gain changes, clock drift, plus one unrelated clip. It saves the true offsets alongside the clips.
+- Real test set: a small subset of the Jiku phone dataset with its sync ground truth (see research notes),
+  plus a home recording from 2–3 phones with a clap at the start and end.
 - Pair measurement: GCC-PHAT with soft whitening (β ≈ 0.8) for all clip pairs.
 - Confidence per pair: peak strength vs. the next-best peak, plus agreement across ~10 s windows
   (the windows also estimate clock drift).
@@ -299,6 +299,9 @@ Checked 2026-09-17. Versions, model names, and prices change quickly, so recheck
 
 **Tooling**
 - Python 3.13: Ultralytics lists support up to 3.13, and current numpy/scipy require ≥ 3.12.
+- FFmpeg: developed with 9.0. The test clips use `-display_rotation` (added in FFmpeg 6.0) and `-fps_mode`
+  (added in 5.1). Homebrew's `ffmpeg` has no libzimg (`zscale`), but the keg-only `ffmpeg-full` does;
+  Ubuntu 24.04's apt package is 6.1. https://formulae.brew.sh/formula/ffmpeg-full
 - uv 0.12.x; Windows install: `winget install --id=astral-sh.uv -e`.
   PyTorch CUDA wheels come from a separate index configured in `[tool.uv.sources]`.
   https://docs.astral.sh/uv/guides/integration/pytorch/

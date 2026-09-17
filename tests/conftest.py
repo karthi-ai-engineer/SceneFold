@@ -7,23 +7,38 @@ picture and sound stayed aligned.
 
 import array
 import json
+import os
 import re
 import shutil
 import subprocess
 import wave
+from collections.abc import Iterable
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 
 from scenefold.ingest import IngestReport, InputResult, ingest
 from scenefold.manifest import Clip, Manifest, load_manifest
 
+# CI sets this so a missing FFmpeg feature fails the run instead of quietly skipping tests.
+REQUIRE_FULL_FFMPEG = os.environ.get("SCENEFOLD_REQUIRE_FULL_FFMPEG") == "1"
 HAVE_FFMPEG = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
-needs_ffmpeg = pytest.mark.skipif(not HAVE_FFMPEG, reason="ffmpeg and ffprobe are not on PATH")
+needs_ffmpeg = pytest.mark.skipif(
+    not HAVE_FFMPEG and not REQUIRE_FULL_FFMPEG, reason="ffmpeg and ffprobe are not on PATH"
+)
 
 MARK_S = 1.0
 H264 = "-c:v libx264 -preset ultrafast -pix_fmt yuv420p"
+
+# Test inputs that only some FFmpeg builds can make, and the features they need.
+OPTIONAL_SOURCES = {
+    "recorder.webm": {"libvpx-vp9", "libopus"},
+    "portrait.mov": {"-display_rotation"},  # FFmpeg 6.0+
+    "hdr_hlg.mp4": {"libx265"},
+}
 
 
 def _args(parts: tuple[str | Path, ...]) -> list[str]:
@@ -44,9 +59,32 @@ def run_ffmpeg(*parts: str | Path) -> subprocess.CompletedProcess[str]:
     return proc
 
 
-def has_encoder(name: str) -> bool:
-    proc = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True)
-    return any(line.split()[1:2] == [name] for line in proc.stdout.splitlines())
+@cache
+def ffmpeg_features() -> frozenset[str]:
+    """Encoder and filter names of the installed FFmpeg, plus the options tests rely on."""
+    names: set[str] = set()
+    for flag in ("-encoders", "-filters"):
+        names |= {line.split()[1] for line in run_ffmpeg(flag).stdout.splitlines()
+                  if len(line.split()) >= 2}  # fmt: skip
+    if "-display_rotation" in run_ffmpeg("-h full").stdout:
+        names.add("-display_rotation")
+    return frozenset(names)
+
+
+def unavailable(reason: str) -> NoReturn:
+    """Skip a test this machine can't run; under SCENEFOLD_REQUIRE_FULL_FFMPEG=1, fail it."""
+    if REQUIRE_FULL_FFMPEG:
+        pytest.fail(f"{reason} (SCENEFOLD_REQUIRE_FULL_FFMPEG=1 does not allow skipping)")
+    pytest.skip(reason)
+
+
+def require_ffmpeg(features: Iterable[str], purpose: str) -> None:
+    if missing := sorted(set(features) - ffmpeg_features()):
+        unavailable(f"{purpose} needs an FFmpeg with {', '.join(missing)}")
+
+
+def require_source(name: str) -> None:
+    require_ffmpeg(OPTIONAL_SOURCES.get(name, ()), f"the test input {name}")
 
 
 def flash_video(seconds: float, color: str, flash_at: float = MARK_S) -> str:
@@ -74,6 +112,7 @@ def make_sources(folder: Path) -> None:
     """Generate the test inputs. Each video has different content so none are duplicates."""
     tone = f"-f lavfi -i {click_audio(6)}"
     aac = "-c:a aac"
+    can_make = {name: needs <= ffmpeg_features() for name, needs in OPTIONAL_SOURCES.items()}
 
     run_ffmpeg(av(6, "black"), H264, aac, "-metadata location=+35.6895+139.6917/",
                "-metadata creation_time=2026-09-01T10:00:00Z", folder / "phone.mp4")
@@ -85,15 +124,16 @@ def make_sources(folder: Path) -> None:
     run_ffmpeg(f"-itsoffset 0.5 -f lavfi -i {flash_video(5.5, 'maroon', flash_at=0.5)}",
                f"-f lavfi -i {click_audio(6)}", H264, aac, folder / "video_late.mp4")
     run_ffmpeg(av(6, "darkgreen"), H264, aac, folder / "clip.mkv")
-    # a browser recording: VP9/Opus WebM with no duration in the header
-    run_ffmpeg(av(6, "gray"), "-c:v libvpx-vp9 -b:v 200k -deadline realtime -c:a libopus -live 1",
-               folder / "recorder.webm")
+    if can_make["recorder.webm"]:  # a browser recording: VP9/Opus WebM with no duration
+        run_ffmpeg(av(6, "gray"), "-c:v libvpx-vp9 -b:v 200k -deadline realtime",
+                   "-c:a libopus -live 1", folder / "recorder.webm")
     run_ffmpeg(av(6, "darkred"), H264, aac, folder / "日本語 動画.mp4")
     run_ffmpeg(av(6, "darkslategray"), H264, aac, folder / "-dash-name.mp4")
-    run_ffmpeg(av(6, "purple"), H264, aac, folder / "upright.mp4")
-    run_ffmpeg("-display_rotation:v:0 90 -i", folder / "upright.mp4", "-c copy",
-               folder / "portrait.mov")
-    (folder / "upright.mp4").unlink()
+    if can_make["portrait.mov"]:
+        run_ffmpeg(av(6, "purple"), H264, aac, folder / "upright.mp4")
+        run_ffmpeg("-display_rotation:v:0 90 -i", folder / "upright.mp4", "-c copy",
+                   folder / "portrait.mov")
+        (folder / "upright.mp4").unlink()
 
     run_ffmpeg("-f lavfi -i testsrc2=s=1920x1080:r=30:d=6", tone, H264, aac, folder / "big.mp4")
     run_ffmpeg("-f lavfi -i testsrc=s=320x240:r=30:d=6", tone,
@@ -104,7 +144,7 @@ def make_sources(folder: Path) -> None:
                folder / "interlaced_anamorphic.mp4")
     run_ffmpeg("-f lavfi -i testsrc=s=321x241:r=30:d=6", tone,
                "-c:v libx264 -preset ultrafast -pix_fmt yuv444p", aac, folder / "odd_size.mp4")
-    if has_encoder("libx265"):
+    if can_make["hdr_hlg.mp4"]:
         run_ffmpeg("-f lavfi -i testsrc2=s=1280x960:r=30:d=6", tone,
                    "-vf format=yuv420p10le -c:v libx265 -preset ultrafast -tag:v hvc1",
                    "-x265-params log-level=error:colorprim=bt2020:transfer=arib-std-b67"
@@ -135,7 +175,7 @@ def make_sources(folder: Path) -> None:
 @pytest.fixture(scope="session")
 def sources(tmp_path_factory) -> Path:
     if not HAVE_FFMPEG:
-        pytest.skip("ffmpeg and ffprobe are not on PATH")
+        unavailable("ffmpeg and ffprobe are not on PATH")
     folder = tmp_path_factory.mktemp("sources")
     make_sources(folder)
     return folder

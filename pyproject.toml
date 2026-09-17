@@ -2,6 +2,9 @@
 name = "scenefold"
 version = "0.1.0"
 description = "Many phone videos of one event, folded into one synced, cited story."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.10",

@@ -1,7 +1,7 @@
 # Scenefold
 
 Many phone videos of one event → one synced timeline, one cited story, one edited film.
-Vision and firm principles: `PROJECT_BRIEF.md`. Phases and current status: `docs/ROADMAP.md`.
+Vision and firm principles: `docs/PROJECT_BRIEF.md`. Phases and current status: `docs/ROADMAP.md`.
 
 ## Git rules (firm)
 

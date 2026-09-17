@@ -14,6 +14,8 @@ from conftest import (
     ffprobe_json,
     flash_time,
     needs_ffmpeg,
+    require_ffmpeg,
+    require_source,
     stream,
     wav_info,
 )
@@ -63,6 +65,7 @@ def outcomes(report) -> dict[str, Outcome]:
 
 @pytest.mark.parametrize("name", TIMED_CLIPS)
 def test_picture_and_sound_stay_aligned(batch, tmp_path, name):
+    require_source(name)
     clip = batch.clip(name)
     assert batch.result(name).outcome is Outcome.ADDED
     assert clip.status is ClipStatus.OK, clip.issues
@@ -117,6 +120,7 @@ def test_audio_late_start_is_recorded(batch):
 
 
 def test_portrait_video_is_turned_upright(batch):
+    require_source("portrait.mov")
     clip = batch.clip("portrait.mov")
     assert clip.source.video.rotation in (90, 270)
     assert (clip.source.video.display_width, clip.source.video.display_height) == (240, 320)
@@ -132,8 +136,8 @@ def test_large_video_is_scaled_down(batch):
 
 
 def test_hdr_video_is_converted(batch):
-    if not (batch.sources / "hdr_hlg.mp4").exists():
-        pytest.skip("this FFmpeg has no libx265 to make an HDR test clip")
+    require_source("hdr_hlg.mp4")
+    require_ffmpeg({"zscale", "tonemap"}, "HDR conversion")
     clip = batch.clip("hdr_hlg.mp4")
     assert clip.source.video.hdr and clip.source.video.color_transfer == "arib-std-b67"
     assert clip.status is ClipStatus.OK, clip.issues
@@ -486,8 +490,7 @@ def test_video_that_cannot_convert_is_recorded_with_its_original(sources, tmp_pa
 
 
 def test_hdr_falls_back_when_conversion_fails(sources, tmp_path, monkeypatch):
-    if not (sources / "hdr_hlg.mp4").exists():
-        pytest.skip("this FFmpeg has no libx265 to make an HDR test clip")
+    require_source("hdr_hlg.mp4")
     real_build = media.build_proxy_command
 
     def broken_tone_map(*args, **kwargs):
