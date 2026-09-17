@@ -1,11 +1,14 @@
-"""Command line: `scenefold ingest <event> <videos or folders>`."""
+"""Command line: `scenefold ingest <event> <videos or folders>` and `scenefold sync <event>`."""
 
 import argparse
 import sys
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
 from scenefold.ingest import IngestError, InputResult, Outcome, ingest
+from scenefold.sync import SyncError, sync_event
+from scenefold.timeline import TIMELINE_NAME, Timeline
 
 SUMMARY_ORDER = [
     Outcome.ADDED,
@@ -40,9 +43,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=Path("data"),
         help="folder that holds event workspaces (default: ./data)",
     )
+    sync_parser = commands.add_parser(
+        "sync",
+        help="put an event's clips on one clock",
+        description="Place every ingested clip on one master timeline by comparing their sound. "
+        "Writes <data-dir>/<event>/timeline.json. Clips that can't be matched are reported, "
+        "never forced.",
+    )
+    sync_parser.add_argument("event", help="event name used with ingest, e.g. match-01")
+    sync_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="folder that holds event workspaces (default: ./data)",
+    )
     args = parser.parse_args(argv)
     _safe_console()
-    return _run_ingest(args)
+    return _run_sync(args) if args.command == "sync" else _run_ingest(args)
 
 
 def _run_ingest(args: argparse.Namespace) -> int:
@@ -63,6 +80,40 @@ def _run_ingest(args: argparse.Namespace) -> int:
     if report.manifest_path.exists():
         print(f"Manifest: {report.manifest_path}")
     return 1 if report.has_failures else 0
+
+
+def _run_sync(args: argparse.Namespace) -> int:
+    try:
+        timeline = sync_event(args.event, data_dir=args.data_dir)
+    except SyncError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("\ninterrupted; nothing was written", file=sys.stderr)
+        return 130
+    _print_timeline(timeline)
+    print(f"Timeline: {Path(args.data_dir) / timeline.event_id / TIMELINE_NAME}")
+    return 0
+
+
+def _print_timeline(timeline: Timeline) -> None:
+    placed = sorted((c for c in timeline.clips if c.placed), key=lambda c: c.offset_s)
+    unplaced = [c for c in timeline.clips if not c.placed]
+    print(
+        f"Event {timeline.event_id}: {len(placed)} of {len(timeline.clips)} clips on one clock "
+        f"(master timeline {timeline.duration_s:.1f} s)"
+    )
+    width = min(40, max((len(c.name) for c in timeline.clips), default=0))
+    for clip in placed:
+        where = f"{clip.offset_s:+10.3f} s  {clip.duration_s:6.1f} s"
+        confidence = f"  confidence {clip.confidence:.1f}" if clip.confidence is not None else ""
+        print(f"  {clip.name:<{width}}  {where}{confidence}")
+    for clip in unplaced:
+        print(f"  {clip.name:<{width}}  not placed: {clip.reason}")
+    rejected = Counter(p.rejected for p in timeline.pairs if p.rejected)
+    parts = [f"{len(timeline.pairs)} measured", f"{sum(p.used for p in timeline.pairs)} used"]
+    parts += [f"{count} {reason}" for reason, count in sorted(rejected.items())]
+    print(f"Pairs: {', '.join(parts)}")
 
 
 def _print_progress(number: int, total: int, path: Path, result: InputResult | None) -> None:

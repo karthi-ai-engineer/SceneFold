@@ -39,7 +39,7 @@ class PairMeasurement(BaseModel):
     confidence: float | None
     overlap_s: float | None  # how long both clips were recording at that lag
     used: bool = False  # True when the solver used this pair to place clips
-    rejected: str | None = None  # why it was not used: short_overlap, low_confidence, inconsistent
+    rejected: str | None = None  # short_overlap, low_confidence, inconsistent, or separate_group
     residual_ms: float | None = None  # disagreement with the solved offsets
 
 

@@ -11,7 +11,7 @@ Last updated: 2026-09-17
 |---|---|---|---|---|
 | 0 | Foundation | — | 1 | Done |
 | 1 | Ingest | 1 | 1 | Done on generated clips; recheck with real phone footage |
-| 2 | Sync | 2 | 1–2 | Not started |
+| 2 | Sync | 2 | 1–2 | In progress: `scenefold sync` works on synthetic audio; real-footage checks next |
 | 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Not started |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Not started |
 | 5 | Clip understanding | 4 | 2 | Not started |
@@ -155,6 +155,15 @@ The claps give ground truth for sync error and clock drift.
 - Synthetic set: median error ≤ 10 ms, and the unrelated clip is rejected.
 - Jiku subset: error measured against ground truth and reported (target: 95% of clips within one frame, 33 ms).
 - Overlaps shorter than ~5 s come out low-confidence instead of wrongly placed.
+
+**Progress (2026-09-17)**
+- Done: `timeline.json` contract (`src/scenefold/timeline.py`); synthetic event audio (`tests/synth.py`);
+  pair measurement with GCC-PHAT-β and a peak-vs-runner-up confidence (`audio_offset.py`); weighted
+  least-squares solve that drops inconsistent pairs and places clips through other clips (`sync.py`);
+  `scenefold sync <event>`.
+- Measured on synthetic phones (10–30 dB noise, echo, different volumes): offset error about 0.02 ms;
+  related pairs score 23–40+ confidence, unrelated audio 1.05–1.14 (threshold 2.0); a 5-minute pair takes 0.3 s.
+- Left: windowed drift check, evaluation on the Jiku subset and the home recording, repetitive-music cases.
 
 ---
 
