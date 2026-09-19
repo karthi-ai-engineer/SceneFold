@@ -29,10 +29,12 @@ export function renderReport(timeline, colorOf, other) {
     <td class="num">${num(c.confidence, 1)}</td><td class="num">${num(c.duration_s, 1, " s")}</td>
     <td>${c.placed ? '<span class="pill good">placed</span>' : `<span class="pill critical">not placed</span> <span class="muted">${esc(c.reason ?? "")}</span>`}</td></tr>`).join("")}</tbody>`;
 
-  $("pair-table").innerHTML = `<thead><tr><th>Clip A</th><th>Clip B</th><th class="num">B starts on A's clock</th><th class="num">Confidence</th><th class="num">Overlap</th><th class="num">Drift of B</th><th class="num">Residual</th><th>Status</th></tr></thead><tbody>${timeline.pairs.map((p) => `
+  const agreement = (p) => (p.windows ? `${Math.round((p.agreement ?? 0) * p.windows)} of ${p.windows}` : "—");
+  $("pair-table").innerHTML = `<thead><tr><th>Clip A</th><th>Clip B</th><th class="num">B starts on A's clock</th><th class="num">Confidence</th><th class="num" title="10 s windows whose sound matches at this lag">Agreement</th><th class="num">Overlap</th><th class="num">Drift of B</th><th class="num">Residual</th><th>Status</th></tr></thead><tbody>${timeline.pairs.map((p) => `
     <tr><td><span class="dot" style="background:${color(p.clip_a)}"></span>${esc(nameOf[p.clip_a])}</td>
     <td><span class="dot" style="background:${color(p.clip_b)}"></span>${esc(nameOf[p.clip_b])}</td>
     <td class="num">${p.lag_s === null ? "—" : signedNum(p.lag_s, 3, " s")}</td><td class="num">${num(p.confidence, 1)}</td>
+    <td class="num">${agreement(p)}</td>
     <td class="num">${num(p.overlap_s, 1, " s")}</td><td class="num">${p.drift_ppm === null ? "—" : signedNum(p.drift_ppm, 1, " ppm")}</td>
     <td class="num">${p.residual_ms === null ? "—" : signedNum(p.residual_ms, 2, " ms")}</td>
     <td>${p.used ? '<span class="pill good">used</span>' : `<span class="pill ${p.rejected === "inconsistent" ? "critical" : "warning"}">${esc(REJECTED[p.rejected] ?? p.rejected ?? "not used")}</span>`}</td></tr>`).join("")}</tbody>`;

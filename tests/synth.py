@@ -50,6 +50,22 @@ def loop(seconds: float, bpm: float = 120, seed: int = 0, rate: int = RATE) -> n
     return (music / np.max(np.abs(music)) * 0.5).astype(np.float32)
 
 
+def show(
+    seconds: float,
+    night_seed: int,
+    backing_level: float = 0.2,
+    songs: tuple[tuple[float, float], ...] = ((20, 60), (75, 115)),
+    rate: int = RATE,
+) -> np.ndarray:
+    """One night of a concert: live sound (singing, talk, crowd) that differs every night, plus a
+    recorded backing track, identical every night, that plays during the songs."""
+    backing = scene(seconds, seed=500, rate=rate) * backing_level
+    playing = np.zeros_like(backing)
+    for start, end in songs:
+        playing[int(start * rate) : int(end * rate)] = 1.0
+    return (backing * playing + scene(seconds, seed=night_seed, rate=rate)).astype(np.float32)
+
+
 @dataclass(frozen=True)
 class Phone:
     start_s: float  # where this recording starts in scene time (the true offset)

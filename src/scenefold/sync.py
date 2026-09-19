@@ -1,9 +1,11 @@
 """Put every clip of an event on one shared clock, using its sound.
 
-Every pair of clips with usable audio is compared (see audio_offset.py). The pairwise lags are then
-solved together with weighted least squares, dropping pairs that disagree with the rest. Clips that
-never overlap directly are still placed through the clips between them. Clock drift measured on
-long pairs is solved the same way, so each clip also gets its own clock rate.
+Every pair of clips with usable audio is compared (see audio_offset.py). Pairs that overlap too
+little, match too weakly, or match in only part of their overlap (the same song on another night)
+are set aside. The rest are solved together with weighted least squares, dropping pairs that
+disagree with the others. Clips that never overlap directly are still placed through the clips
+between them. Clock drift measured on long pairs is solved the same way, so each clip also gets
+its own clock rate.
 """
 
 from itertools import combinations
@@ -30,6 +32,7 @@ from scenefold.timeline import (
 )
 
 NOT_MATCHED = "no confident audio match with the other clips"
+SEPARATE = "matches other clips, but not the main group (maybe another night or moment)"
 
 
 class SyncError(Exception):
@@ -62,6 +65,8 @@ def solve_timeline(
             pair.rejected = "short_overlap"
         elif pair.confidence is None or pair.confidence < settings.min_confidence:
             pair.rejected = "low_confidence"
+        elif _partial_match(pair, settings):
+            pair.rejected = "partial_match"
         else:
             candidates.append(pair)
     if not clip_ids:
@@ -92,6 +97,19 @@ def solve_timeline(
         offsets={clip: offset - earliest for clip, offset in offsets.items()},
         drift_ppm={clip: drift.get(clip) for clip in main},
         pairs=pairs,
+    )
+
+
+def _partial_match(pair: PairMeasurement, settings: SyncSettings) -> bool:
+    """True when the sound matches in only part of a long overlap.
+
+    That is what the same song played on another night looks like: the recorded backing track
+    matches, the singing, talking, and crowd don't. It can be as confident as a true match.
+    """
+    return (
+        (pair.windows or 0) >= settings.agreement_windows
+        and pair.agreement is not None
+        and pair.agreement < settings.min_agreement
     )
 
 
@@ -213,6 +231,8 @@ def sync_event(
                 confidence=found.confidence if found else None,
                 overlap_s=found.overlap_s if found else None,
                 drift_ppm=_rounded(found.drift_ppm if found else None, 3),
+                windows=found.windows if found else None,
+                agreement=_rounded(found.agreement if found else None, 3),
             )
         )
 
@@ -238,13 +258,17 @@ def sync_event(
                 )
             )
         else:
+            separate = any(
+                p.rejected == "separate_group" and clip.clip_id in (p.clip_a, p.clip_b)
+                for p in pairs
+            )
             placements.append(
                 ClipPlacement(
                     clip_id=clip.clip_id,
                     name=clip.source.name,
                     placed=False,
                     duration_s=duration,
-                    reason=reasons[clip.clip_id] or NOT_MATCHED,
+                    reason=reasons[clip.clip_id] or (SEPARATE if separate else NOT_MATCHED),
                 )
             )
 

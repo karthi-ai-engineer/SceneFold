@@ -36,6 +36,11 @@ MIN_DRIFT_EFFECT_S = 0.00025
 # instead: strong drift over a long overlap smears a whole-clip match far more than a short piece.
 PIECE_S = 60.0
 MAX_PIECES = 4
+# To check that a match holds through the whole overlap, each window looks for its own best lag
+# this far either side, and agrees when it lands within this of the pair's lag (one video frame).
+AGREE_SEARCH_S = 1.0
+AGREE_TOLERANCE_S = 0.03
+AGREE_MAX_WINDOWS = 24  # a long overlap is sampled at this many evenly spaced windows
 
 
 @dataclass(frozen=True)
@@ -44,6 +49,8 @@ class OffsetMeasurement:
     confidence: float  # how clearly the best match beats the next-best one; higher is better
     overlap_s: float  # how long both recordings overlap at that lag
     drift_ppm: float | None = None  # how much faster B's clock ran than A's; None: not measurable
+    windows: int = 0  # windows the overlap holds
+    agreement: float | None = None  # share of windows whose own best lag matches the pair's
 
 
 def load_audio(path: Path, rate: int) -> np.ndarray:
@@ -88,14 +95,14 @@ def measure_offset(
         MIN_DRIFT_EFFECT_S * rate
     )
     if drift is None or (small and not from_pieces):
-        return _measurement(lag, confidence, len(a), len(b), rate, drift)
+        return _measurement(a, b, lag, confidence, rate, beta, window_s, drift)
 
     # Put B on A's clock (B ran fast: fewer samples), then match again for a sharp peak.
     stretched = signal.resample(b, round(len(b) / (1 + drift * 1e-6))).astype(np.float32)
     again = _best_lag(a, stretched, rate, beta, min_overlap)
     if again is None or again[1] < 0.9 * confidence:  # the line was not real drift after all
-        return _measurement(lag, confidence, len(a), len(b), rate, None)
-    return _measurement(again[0], again[1], len(a), len(stretched), rate, drift)
+        return _measurement(a, b, lag, confidence, rate, beta, window_s, None)
+    return _measurement(a, stretched, again[0], again[1], rate, beta, window_s, drift)
 
 
 def _best_lag(
@@ -172,34 +179,13 @@ def _drift_ppm(
     None when there are too few windows, or when most windows don't sit on one straight line
     (unrelated sound, or music too repetitive to follow).
     """
-    start, end = max(0.0, lag), min(float(len(a)), lag + len(b))
-    size = round(window_s * rate)
-    count = int((end - start) // size)
-    if size < 1 or count < 3:
-        return None
-    search = round((SEARCH_MARGIN_S + max_drift_ppm * 1e-6 * (end - start) / rate) * rate)
-    margin = ((end - start) - count * size) / 2
-
-    times, lags = [], []
-    for index in range(count):
-        first = int(start + margin + index * size)  # window start on A
-        low = max(0, round(first - lag) - search)
-        high = min(len(b), round(first - lag) + size + search)
-        centre = round(lag) + low - first  # expected lag between the window and b[low:high]
-        lowest = max(centre - search, size // 2 - (high - low))
-        highest = min(centre + search, size - size // 2)
-        if lowest > highest:
-            continue
-        strength = _strength(a[first : first + size], b[low:high], beta, lowest, highest)
-        if strength is None:
-            continue
-        best = int(np.argmax(strength))
-        times.append((first + size / 2) / rate)
-        lags.append((lowest + best + _parabolic_offset(strength, best) + first - low) / rate)
-    if len(lags) < 3:
+    overlap_s = _overlap(lag, len(a), len(b)) / rate
+    search_s = SEARCH_MARGIN_S + max_drift_ppm * 1e-6 * overlap_s
+    found = [w for w in _window_lags(a, b, lag, rate, beta, window_s, search_s) if w[1] is not None]
+    if len(found) < 3:
         return None
 
-    t, lags_s = np.array(times), np.array(lags)
+    t, lags_s = np.array([w[0] for w in found]), np.array([w[1] for w in found])
     # Theil-Sen takes the median of the slopes between window pairs, so outliers can't tilt it
     slope, intercept = stats.theilslopes(lags_s, t)[:2]
     on_line = np.abs(lags_s - (intercept + slope * t)) <= LINE_TOLERANCE_S
@@ -210,6 +196,75 @@ def _drift_ppm(
     slope = np.polyfit(t[on_line], lags_s[on_line], 1)[0]
     drift = -float(slope) * 1e6  # B running fast makes the lag shrink over time
     return drift if abs(drift) <= max_drift_ppm else None
+
+
+def _agreement(
+    a: np.ndarray, b: np.ndarray, lag: float, rate: int, beta: float, window_s: float
+) -> tuple[int, float | None]:
+    """Windows in the overlap, and the share whose own best lag matches the pair's.
+
+    A true match holds through the whole overlap. The same song played on another night matches
+    only where its recorded backing track plays, so its windows find other lags more often.
+    """
+    windows = _window_lags(a, b, lag, rate, beta, window_s, AGREE_SEARCH_S, AGREE_MAX_WINDOWS)
+    if not windows:
+        return 0, None
+    agreeing = sum(
+        1
+        for _, found in windows
+        if found is not None and abs(found - lag / rate) <= AGREE_TOLERANCE_S
+    )
+    return len(windows), agreeing / len(windows)
+
+
+def _window_lags(
+    a: np.ndarray,
+    b: np.ndarray,
+    lag: float,
+    rate: int,
+    beta: float,
+    window_s: float,
+    search_s: float,
+    limit: int | None = None,
+) -> list[tuple[float, float | None]]:
+    """(centre on A's clock, best lag) in seconds for each window of the overlap.
+
+    Each window of A is matched against B within search_s of the pair's lag (samples); the lag is
+    None when there is nothing to compare (silence, or the window runs off B). With a limit, a long
+    overlap is sampled at that many evenly spaced windows.
+    """
+    start, end = max(0.0, lag), min(float(len(a)), lag + len(b))
+    size = round(window_s * rate)
+    if size < 1:
+        return []
+    count = int((end - start) // size)
+    search = round(search_s * rate)
+    margin = ((end - start) - count * size) / 2
+    indices = range(count)
+    if limit is not None and count > limit:
+        indices = np.unique(np.linspace(0, count - 1, limit).round().astype(int))
+    found: list[tuple[float, float | None]] = []
+    for index in indices:
+        first = int(start + margin + index * size)  # window start on A
+        low = max(0, round(first - lag) - search)
+        high = min(len(b), round(first - lag) + size + search)
+        centre = round(lag) + low - first  # expected lag between the window and b[low:high]
+        lowest = max(centre - search, size // 2 - (high - low))
+        highest = min(centre + search, size - size // 2)
+        time = (first + size / 2) / rate
+        strength = (
+            _strength(a[first : first + size], b[low:high], beta, lowest, highest)
+            if lowest <= highest
+            else None
+        )
+        if strength is None:
+            found.append((time, None))
+            continue
+        best = int(np.argmax(strength))
+        found.append(
+            (time, (lowest + best + _parabolic_offset(strength, best) + first - low) / rate)
+        )
+    return found
 
 
 def _prepare(samples: np.ndarray) -> np.ndarray:
@@ -233,11 +288,22 @@ def _overlap(lag: float, len_a: int, len_b: int) -> float:
 
 
 def _measurement(
-    lag: float, confidence: float, len_a: int, len_b: int, rate: int, drift: float | None
+    a: np.ndarray,
+    b: np.ndarray,
+    lag: float,
+    confidence: float,
+    rate: int,
+    beta: float,
+    window_s: float,
+    drift: float | None,
 ) -> OffsetMeasurement:
+    """The result for B (already on A's clock if its drift was cancelled) at this lag."""
+    windows, agreement = _agreement(a, b, lag, rate, beta, window_s)
     return OffsetMeasurement(
         lag_s=lag / rate,
         confidence=confidence,
-        overlap_s=_overlap(lag, len_a, len_b) / rate,
+        overlap_s=_overlap(lag, len(a), len(b)) / rate,
         drift_ppm=drift,
+        windows=windows,
+        agreement=agreement,
     )

@@ -176,6 +176,7 @@ export function formatTime(seconds, digits = 3) {
 export const REJECTED = {
   short_overlap: "overlap under 5 s",
   low_confidence: "match too weak",
+  partial_match: "sound agrees only in parts",
   inconsistent: "disagrees with the other pairs",
   separate_group: "not linked to the main group",
 };

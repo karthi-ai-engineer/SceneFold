@@ -6,7 +6,7 @@ import wave
 import numpy as np
 import pytest
 from scipy import signal
-from synth import RATE, Phone, loop, record, scene, write_wav
+from synth import RATE, Phone, loop, record, scene, show, write_wav
 
 from scenefold.audio_offset import EXCLUSION_S, load_audio, measure_offset
 from scenefold.timeline import SyncSettings
@@ -164,6 +164,41 @@ def test_repeating_music_with_a_crowd_is_matched():
     measured = measure_offset(*music_pair(0.3), ANALYSIS_RATE)
     assert measured.lag_s == pytest.approx(13.3, abs=0.002)
     assert measured.confidence > THRESHOLD
+
+
+# --- does the match hold all through the overlap?
+
+
+def test_a_true_match_agrees_in_every_window(event):
+    a, b = pair(event, Phone(0.0, 60, seed=1), Phone(6.5, 50, snr_db=15, echo=0.3, seed=2))
+    measured = measure_offset(a, b, ANALYSIS_RATE)
+    assert measured.windows >= SyncSettings().agreement_windows
+    assert measured.agreement == 1.0
+
+
+def test_the_same_song_on_another_night_agrees_only_in_parts():
+    first, second = (show(120, night_seed=seed, rate=ANALYSIS_RATE) for seed in (601, 602))
+    a = record(first, Phone(0.0, 110, snr_db=15, echo=0.3, seed=1), ANALYSIS_RATE)
+    same_night = record(first, Phone(5.0, 110, snr_db=15, echo=0.3, seed=2), ANALYSIS_RATE)
+    other_night = record(second, Phone(8.0, 110, snr_db=15, echo=0.3, seed=3), ANALYSIS_RATE)
+
+    true = measure_offset(a, same_night, ANALYSIS_RATE)
+    assert true.lag_s == pytest.approx(5.0, abs=0.001)
+    assert true.agreement == 1.0
+
+    false = measure_offset(a, other_night, ANALYSIS_RATE)
+    print(f"other night: confidence {false.confidence:.2f}, agreement {false.agreement:.2f}")
+    settings = SyncSettings()
+    # the identical backing track alone clears the confidence bar...
+    assert false.confidence >= THRESHOLD
+    # ...but the singing, talk, and crowd around it don't follow
+    assert false.windows >= settings.agreement_windows
+    assert false.agreement < settings.min_agreement
+
+
+def test_short_overlaps_hold_too_few_windows_to_judge(event):
+    a, b = pair(event, Phone(0.0, 30, seed=1), Phone(14.0, 16, seed=2))  # 16 s overlap
+    assert measure_offset(a, b, ANALYSIS_RATE).windows < SyncSettings().agreement_windows
 
 
 # --- clock drift

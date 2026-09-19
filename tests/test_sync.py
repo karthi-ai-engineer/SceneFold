@@ -171,6 +171,42 @@ def test_clips_without_a_drift_measurement_get_none():
     assert solution.offsets["C"] == pytest.approx(5.0 / (1 - 15e-6) + 7.0 / (1 + 15e-6), abs=1e-9)
 
 
+def test_a_match_that_holds_in_only_part_of_a_long_overlap_is_set_aside():
+    partial = pair("A", "B", 5.0, confidence=12.0)  # however confident
+    partial.windows, partial.agreement = 10, 0.8
+    whole = pair("A", "C", 9.0, confidence=3.0)
+    whole.windows, whole.agreement = 10, 1.0
+    few_windows = pair("B", "C", 4.0, confidence=3.0)  # too short to judge
+    few_windows.windows, few_windows.agreement = 1, 0.0
+    offsets, _, pairs = solve_timeline(["A", "B", "C"], [partial, whole, few_windows], SETTINGS)
+    found = by_clips(pairs)
+    assert found[("A", "B")].rejected == "partial_match"
+    assert found[("A", "C")].used and found[("B", "C")].used
+    assert offsets == pytest.approx({"A": 0.0, "B": 5.0, "C": 9.0})
+
+
+def measured(a: str, b: str, audio: dict, rate: int) -> PairMeasurement:
+    found = measure_offset(audio[a], audio[b], rate)
+    return PairMeasurement(clip_a=a, clip_b=b, lag_s=found.lag_s, confidence=found.confidence,
+                           overlap_s=found.overlap_s, drift_ppm=found.drift_ppm,
+                           windows=found.windows, agreement=found.agreement)  # fmt: skip
+
+
+def test_the_same_song_on_another_night_is_not_placed():
+    rate = SETTINGS.analysis_rate
+    first, second = (synth.show(120, night_seed=seed, rate=rate) for seed in (601, 602))
+    audio = {
+        "A": synth.record(first, synth.Phone(0.0, 110, snr_db=15, echo=0.3, seed=1), rate),
+        "B": synth.record(first, synth.Phone(5.0, 110, snr_db=15, echo=0.3, seed=2), rate),
+        "C": synth.record(second, synth.Phone(8.0, 110, snr_db=15, echo=0.3, seed=3), rate),
+    }
+    pairs = [measured(a, b, audio, rate) for a, b in [("A", "B"), ("A", "C"), ("B", "C")]]
+    solution = solve_timeline(["A", "B", "C"], pairs, SETTINGS)
+    assert solution.offsets == pytest.approx({"A": 0.0, "B": 5.0}, abs=0.002)
+    found = by_clips(solution.pairs)
+    assert found[("A", "C")].rejected == found[("B", "C")].rejected == "partial_match"
+
+
 # --- sound that repeats: a chorus played twice
 
 

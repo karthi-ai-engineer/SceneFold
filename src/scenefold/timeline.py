@@ -38,6 +38,13 @@ class SyncSettings(BaseModel):
     max_residual_ms: float = Field(20.0, gt=0)  # pairs disagreeing more than this are dropped
     window_s: float = Field(10.0, gt=0)  # drift is measured from windows of this length
     max_drift_ppm: float = Field(1000.0, ge=0)  # clock drift beyond this is not searched for
+    # The same song played on two nights can match on its backing track alone, as confidently as a
+    # true match (14 Coldplay clips from two nights: agreement 0.50-0.87 across nights, nearly
+    # always 1.0 within a night and on Jiku). A pair whose windows agree less than this is set aside
+    min_agreement: float = Field(0.9, ge=0, le=1)
+    # ...when its overlap holds at least this many windows. Short clips count too: a 32 s clip whose
+    # windows agreed 1 of 3 and 0 of 3 linked the two Coldplay nights when left unjudged.
+    agreement_windows: int = Field(2, ge=1)
 
 
 class PairMeasurement(BaseModel):
@@ -49,8 +56,11 @@ class PairMeasurement(BaseModel):
     confidence: float | None
     overlap_s: float | None  # how long both clips were recording at that lag
     drift_ppm: float | None = None  # how much faster B's clock ran than A's (None: too short)
+    windows: int | None = None  # windows the overlap was cut into to check the match holds
+    agreement: float | None = None  # share of those windows whose sound matches at this lag
     used: bool = False  # True when the solver used this pair to place clips
-    rejected: str | None = None  # short_overlap, low_confidence, inconsistent, or separate_group
+    # short_overlap, low_confidence, partial_match, inconsistent, or separate_group
+    rejected: str | None = None
     residual_ms: float | None = None  # disagreement with the solved offsets
 
 
