@@ -1,10 +1,11 @@
 """Compare Scenefold's sync with two open-source baselines on the same audio and ground truth.
 
-For every pair of clips in an event, each method gives a lag: where clip B's time 0 falls on clip
-A's clock. The error is that lag minus the ground truth lag (see tools/jiku.py for the data).
+Scoring is the same as `scenefold evaluate`: at every ground-truth moment that two clips both
+caught, each method predicts clip A's time of the moment from clip B's time, and the error is how
+far off that is. The moments come from tools/jiku.py (data/_downloads/jiku/<event>_truth.json).
 
-- scenefold_pair:   the raw pair measurement in data/<event>/timeline.json
-- scenefold_solved: the lag implied by the solved clip offsets and drifts in timeline.json
+- scenefold_pair:   the raw pair measurement in data/<event>/timeline.json (lag and pair drift)
+- scenefold_solved: the solved clip offsets and drifts in timeline.json
 - audio_offset_finder (BBC, Apache-2.0): MFCC cross-correlation, one call per pair, both orders
 - audalign (MIT): CorrelationRecognizer on all clips at once, then its fine_align
 
@@ -20,10 +21,8 @@ Needs FFmpeg on PATH. Writes data/_downloads/jiku/baselines_<event>.json and pri
 import argparse
 import contextlib
 import io
-import itertools
 import json
 import time
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import audalign
@@ -31,9 +30,8 @@ import numpy as np
 from audio_offset_finder.audio_offset_finder import find_offset_between_files
 
 DOWNLOADS = Path("data/_downloads/jiku")
-TRUTH_XML = DOWNLOADS / "SAF_290512_groundtruth.xml"
 METHODS = ["scenefold_pair", "scenefold_solved", "audio_offset_finder", "audalign", "audalign_fine"]
-FRAME_MS = 33  # one video frame at 30 fps
+FRAME_MS = 1000 / 30  # one video frame at 30 fps
 WRONG_MS = 1000  # further off than this is a wrong match, not an inaccurate one
 
 
@@ -42,25 +40,22 @@ def main() -> None:
     parser.add_argument("events", nargs="+", help="events that have run scenefold sync")
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
     args = parser.parse_args()
-    truth = read_ground_truth(TRUTH_XML)
     for event in args.events:
-        result = compare(args.data_dir / event, truth)
+        result = compare(args.data_dir / event, DOWNLOADS / f"{event}_truth.json")
         out = DOWNLOADS / f"baselines_{event}.json"
         out.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
         print_result(event, result)
         print(f"wrote {out}\n")
 
 
-def compare(event_dir: Path, truth: dict[str, tuple[float, float]]) -> dict:
+def compare(event_dir: Path, truth_path: Path) -> dict:
     manifest = json.loads((event_dir / "manifest.json").read_text(encoding="utf-8"))
     timeline = json.loads((event_dir / "timeline.json").read_text(encoding="utf-8"))
-    names = {c["clip_id"]: Path(c["source"]["name"]).stem for c in manifest["clips"]}
+    moments = json.loads(truth_path.read_text(encoding="utf-8"))["moments"]
+    names = {c["clip_id"]: c["source"]["name"] for c in manifest["clips"]}
     wavs = {c["clip_id"]: str(event_dir / c["proxy"]["audio"]) for c in manifest["clips"]}
-    solved = {c["clip_id"]: (c["offset_s"], c["drift_ppm"]) for c in timeline["clips"]}
+    solved = {c["clip_id"]: (c["offset_s"], c["drift_ppm"] or 0.0) for c in timeline["clips"]}
     measured = {(p["clip_a"], p["clip_b"]): p for p in timeline["pairs"]}
-    for a, b in itertools.combinations(names, 2):  # make sure every pair is there, in any order
-        if (a, b) not in measured and (b, a) not in measured:
-            raise SystemExit(f"timeline.json has no pair for {names[a]} and {names[b]}")
 
     run_time_s = {}
     started = time.perf_counter()
@@ -68,53 +63,65 @@ def compare(event_dir: Path, truth: dict[str, tuple[float, float]]) -> dict:
     run_time_s["audio_offset_finder"] = round(time.perf_counter() - started, 1)
     coarse, fine, run_time_s["audalign"], run_time_s["audalign_fine"] = audalign_shifts(wavs)
 
-    pairs = []
-    for (a, b), measurement in measured.items():
-        truth_lag = clock_lag(truth[names[a]], truth[names[b]])
+    rows = []
+    for (a, b), pair in measured.items():
         lags = {
-            "scenefold_pair": measurement["lag_s"],
-            "scenefold_solved": clock_lag(solved[a], solved[b]),
             "audio_offset_finder": offset_finder[a, b][0],
             "audalign": shift_lag(coarse, a, b),
             "audalign_fine": shift_lag(fine, a, b),
         }
-        pairs.append(
-            {
-                "clip_a": names[a],
-                "clip_b": names[b],
-                "truth_lag_s": truth_lag,
-                "lag_s": lags,
-                "error_ms": {
-                    m: None if v is None else (v - truth_lag) * 1e3 for m, v in lags.items()
-                },
-                "scenefold_used": measurement["used"],
-                "scenefold_confidence": measurement["confidence"],
-                "audio_offset_finder_score": offset_finder[a, b][1],
+        for moment in moments:
+            times = moment["times"]
+            if names[a] not in times or names[b] not in times:
+                continue
+            t_a, t_b = times[names[a]], times[names[b]]
+            predicted = {
+                # on A's clock B's time 0 is at lag_s, and B's clock runs drift_ppm faster
+                "scenefold_pair": pair["lag_s"] + t_b / (1 + (pair["drift_ppm"] or 0.0) * 1e-6),
+                "scenefold_solved": solved_time(solved[a], solved[b], t_b),
+                **{m: None if lag is None else lag + t_b for m, lag in lags.items()},
             }
-        )
+            rows.append(
+                {
+                    "clip_a": Path(names[a]).stem,
+                    "clip_b": Path(names[b]).stem,
+                    "moment": moment["label"],
+                    "error_ms": {
+                        m: None if v is None else (v - t_a) * 1e3 for m, v in predicted.items()
+                    },
+                    "scenefold_used": pair["used"],
+                    "audio_offset_finder_score": offset_finder[a, b][1],
+                }
+            )
 
-    with_20 = [p for p in pairs if "_20_" in p["clip_a"] + p["clip_b"]]
+    with_20 = [r for r in rows if "_20_" in r["clip_a"] + r["clip_b"]]
     return {
         "run_time_s": run_time_s,
         "summary": {
             m: {
-                "all": summarise([p["error_ms"][m] for p in pairs]),
-                "without_20": summarise([p["error_ms"][m] for p in pairs if p not in with_20]),
+                "all": summarise([r["error_ms"][m] for r in rows]),
+                "without_20": summarise([r["error_ms"][m] for r in rows if r not in with_20]),
             }
             for m in METHODS
         },
-        # on device 20 pairs: is a method closer to the ground truth or to Scenefold's measurement?
+        # on device 20: is a method closer to the ground truth or to Scenefold's measurement?
         "device_20_median_abs_ms": {
             m: {
-                "vs_truth": median_abs([p["error_ms"][m] for p in with_20]),
+                "vs_truth": median_abs([r["error_ms"][m] for r in with_20]),
                 "vs_scenefold_pair": median_abs(
-                    [lag_gap(p["lag_s"][m], p["lag_s"]["scenefold_pair"]) for p in with_20]
+                    [gap(r["error_ms"][m], r["error_ms"]["scenefold_pair"]) for r in with_20]
                 ),
             }
             for m in METHODS
         },
-        "pairs": pairs,
+        "rows": rows,
     }
+
+
+def solved_time(a: tuple[float, float], b: tuple[float, float], t_b: float) -> float:
+    """Clip A's time of the instant at clip B's time t_b, from (offset_s, drift_ppm) of each."""
+    master = b[0] + t_b / (1 + b[1] * 1e-6)
+    return (master - a[0]) * (1 + a[1] * 1e-6)
 
 
 def offset_finder_lag(wav_a: str, wav_b: str) -> tuple[float, float]:
@@ -156,33 +163,16 @@ def shift_lag(shifts: dict[str, float], a: str, b: str) -> float | None:
     return shifts[b] - shifts[a] if a in shifts and b in shifts else None
 
 
-def clock_lag(a: tuple[float, float], b: tuple[float, float]) -> float:
-    """B's time 0 on A's clock, from (offset_s, drift_ppm) of each clip on a shared clock."""
-    return (b[0] - a[0]) * (1 + a[1] * 1e-6)
-
-
-def lag_gap(lag: float | None, other: float) -> float | None:
-    return None if lag is None else (lag - other) * 1e3
-
-
-def read_ground_truth(path: Path) -> dict[str, tuple[float, float]]:
-    """(offset_s, drift_ppm) per recording name. Offsets are .NET TimeSpans d:hh:mm:ss.fffffff."""
-    truth = {}
-    for recording in ET.parse(path).getroot().iter("recording"):
-        if recording.get("offset"):
-            parts = [float(x) for x in recording.get("offset").split(":")]
-            units = (1, 60, 3600, 86400)
-            offset = sum(x * unit for x, unit in zip(reversed(parts), units, strict=False))
-            truth[recording.get("name")] = (offset, (1 / float(recording.get("speed")) - 1) * 1e6)
-    return truth
+def gap(error: float | None, other: float) -> float | None:
+    return None if error is None else error - other
 
 
 def summarise(errors_ms: list[float | None]) -> dict:
     found = np.abs([e for e in errors_ms if e is not None])
     if not len(found):
-        return {"pairs": len(errors_ms), "missing": len(errors_ms)}
+        return {"errors": len(errors_ms), "missing": len(errors_ms)}
     return {
-        "pairs": len(errors_ms),
+        "errors": len(errors_ms),
         "missing": len(errors_ms) - len(found),
         "median_ms": round(float(np.median(found)), 1),
         "p95_ms": round(float(np.percentile(found, 95)), 1),
@@ -199,16 +189,16 @@ def median_abs(values: list[float | None]) -> float:
 def print_result(event: str, result: dict) -> None:
     print(f"\n{event}  run time (s): {result['run_time_s']}")
     print(
-        f"{'method':<20} {'pairs':<11} {'median':>7} {'p95':>7} {'max':>9} {'<=33ms':>7} {'>1s':>4}"
+        f"{'method':<20} {'pairs':<11} {'median':>7} {'p95':>7} {'max':>9} {'<=33ms':>9} {'>1s':>4}"
     )
     for method, subsets in result["summary"].items():
         for subset, s in subsets.items():
-            if s["missing"] == s["pairs"]:
+            if s["missing"] == s["errors"]:
                 print(f"{method:<20} {subset:<11} no result")
                 continue
             print(
                 f"{method:<20} {subset:<11} {s['median_ms']:7.1f} {s['p95_ms']:7.1f} "
-                f"{s['max_ms']:9.1f} {s['within_frame']:4}/{s['pairs'] - s['missing']:<2} "
+                f"{s['max_ms']:9.1f} {s['within_frame']:5}/{s['errors'] - s['missing']:<3} "
                 f"{s['wrong_over_1s']:4}"
             )
     print("device 20 pairs, median |difference| in ms:")

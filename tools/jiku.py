@@ -23,6 +23,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+import numpy as np
+
 from scenefold.evaluate import moments_from_offsets
 from scenefold.media import find_tools
 
@@ -92,6 +94,12 @@ def main() -> int:
         durations[file_name] = starts[name]["duration"]
         drift_ppm[file_name] = (1 / speeds[name] - 1) * 1e6
     truth = moments_from_offsets(offsets_s, durations, drift_ppm)
+    # The ground truth counts decoded audio samples; Scenefold's clip time follows the file's
+    # timestamps, like the picture. Some phones disagree (a Galaxy S II writes 314 ppm more samples
+    # than its timestamps say), so move each moment to where the file's timestamps put it.
+    to_file_time = {f"{name}.mp4": sample_clock(clip_dir / f"{name}.mp4") for name in names}
+    for moment in truth.moments:
+        moment.times = {n: round(to_file_time[n](t), 6) for n, t in moment.times.items()}
 
     # timeline.json measures drift against the average clip, so show it that way to compare
     mean = sum(drift_ppm.values()) / len(drift_ppm)
@@ -178,6 +186,27 @@ def timespan_s(text: str) -> float:
     for part, unit in zip(reversed(text.split(":")), (1, 60, 3600, 86400), strict=False):
         seconds += float(part) * unit
     return seconds
+
+
+def sample_clock(path: Path):
+    """Map time counted in decoded audio samples to the file's own timestamps (both from 0)."""
+    options = (
+        "-v error -select_streams a:0 -show_entries frame=pts_time,nb_samples:stream=sample_rate"
+    )
+    proc = subprocess.run(
+        [find_tools().ffprobe, *options.split(), "-of", "json", str(path)],
+        capture_output=True,
+        text=True,
+    )
+    data = json.loads(proc.stdout)
+    rate = int(data["streams"][0]["sample_rate"])
+    frames = [f for f in data["frames"] if "pts_time" in f]
+    stamps = np.array([float(f["pts_time"]) for f in frames])
+    counted = (
+        stamps[0]
+        + np.concatenate([[0], np.cumsum([int(f["nb_samples"]) for f in frames])[:-1]]) / rate
+    )
+    return lambda t: float(np.interp(t + stamps[0], counted, stamps))
 
 
 def probe(path: Path) -> dict[str, float]:
