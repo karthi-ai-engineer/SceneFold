@@ -1,5 +1,5 @@
-"""Command line: `scenefold ingest <event> <videos or folders>`, `scenefold sync <event>`, and
-`scenefold evaluate <event> <ground truth>`."""
+"""Command line: `scenefold ingest <event> <videos or folders>`, `scenefold sync <event>`,
+`scenefold evaluate <event> <ground truth>`, and `scenefold view <event>`."""
 
 import argparse
 import sys
@@ -11,6 +11,7 @@ from scenefold.evaluate import FRAME_S, EvaluationError, evaluate_event
 from scenefold.ingest import IngestError, InputResult, Outcome, ingest
 from scenefold.sync import SyncError, sync_event
 from scenefold.timeline import TIMELINE_NAME, Timeline
+from scenefold.view import DEFAULT_PORT, ViewError, serve
 
 SUMMARY_ORDER = [
     Outcome.ADDED,
@@ -74,9 +75,35 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=Path("data"),
         help="folder that holds event workspaces (default: ./data)",
     )
+    view_parser = commands.add_parser(
+        "view",
+        help="watch an event's clips together in the browser",
+        description="Play every synced clip of an event side by side in the browser, on one "
+        "clock. Starts a small web server that only this computer can reach (127.0.0.1) and "
+        "opens the viewer. Runs until Ctrl+C.",
+    )
+    view_parser.add_argument("event", help="event name used with sync, e.g. match-01")
+    view_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="folder that holds event workspaces (default: ./data)",
+    )
+    view_parser.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        help=f"port to serve on; if it is taken, the next free one is used (default: "
+        f"{DEFAULT_PORT})",
+    )
+    view_parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="only print the viewer's address; don't open a browser",
+    )
     args = parser.parse_args(argv)
     _safe_console()
-    run = {"ingest": _run_ingest, "sync": _run_sync, "evaluate": _run_evaluate}
+    run = {"ingest": _run_ingest, "sync": _run_sync, "evaluate": _run_evaluate, "view": _run_view}
     return run[args.command](args)
 
 
@@ -159,6 +186,18 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         f"  within one frame ({frame_ms:.0f} ms): {result.within_frame} of {len(result.errors)} "
         f"({share:.0%})"
     )
+    return 0
+
+
+def _run_view(args: argparse.Namespace) -> int:
+    try:
+        serve(args.event, data_dir=args.data_dir, port=args.port, open_browser=not args.no_browser)
+    except ViewError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        pass  # Ctrl+C before the server was answering; stopping is still the normal end
+    print("stopped")
     return 0
 
 
