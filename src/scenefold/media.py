@@ -426,7 +426,9 @@ def build_proxy_command(
     graph = f"[0:{video.index}]{','.join(chain)}[v]"
     if with_audio:
         assert info.audio is not None
-        graph += ";" + _audio_graph(info.audio.index, settings.audio_sample_rate)
+        graph += ";" + _audio_graph(
+            info.audio.index, settings.audio_sample_rate, settings.audio_max_stretch
+        )
 
     keyframes = max(1, round(settings.fps * settings.keyframe_interval_s))
     cmd = [tools.ffmpeg, *"-hide_banner -nostdin -nostats -v info -y -i".split(), str(src)]
@@ -446,11 +448,14 @@ def build_proxy_command(
     return cmd
 
 
-def _audio_graph(stream_index: int, sample_rate: int) -> str:
-    # first_pts=0 pads (or trims) the sound so it starts exactly at clip time 0, like the picture
+def _audio_graph(stream_index: int, sample_rate: int, max_stretch: int) -> str:
+    # first_pts=0 pads (or trims) the sound so it starts exactly at clip time 0, like the picture.
+    # async lets it stretch smoothly to follow its timestamps: some phones write more samples than
+    # their timestamps say (a Galaxy S II, 314 ppm) or jump their timestamps after the first frame.
+    # The picture follows the timestamps, so following them too keeps picture and sound together.
     return (
-        f"[0:{stream_index}]aresample={sample_rate}:async=1:first_pts=0,asplit=2[pa][wa];"
-        "[wa]aformat=channel_layouts=mono,volumedetect[wav]"
+        f"[0:{stream_index}]aresample={sample_rate}:async={max_stretch}:first_pts=0,"
+        "asplit=2[pa][wa];[wa]aformat=channel_layouts=mono,volumedetect[wav]"
     )
 
 

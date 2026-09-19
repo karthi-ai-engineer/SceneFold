@@ -58,6 +58,9 @@ class ProxySettings(BaseModel):
     preset: str = Field("veryfast", pattern=r"^[a-z]+$")  # x264 speed preset
     audio_sample_rate: int = 48000
     audio_bitrate_kbps: int = Field(128, ge=32)
+    # samples per second the sound may be stretched or squeezed to follow its timestamps, as the
+    # picture does; 1 only pads the start (phones' audio clocks can disagree with their timestamps)
+    audio_max_stretch: int = Field(1000, ge=1)
 
     def key(self) -> str:
         return hashlib.sha256(self.model_dump_json().encode()).hexdigest()[:12]

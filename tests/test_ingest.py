@@ -3,12 +3,16 @@
 import hashlib
 import json
 import os
+import re
 import shutil
+import wave
 from datetime import UTC, datetime
 from pathlib import Path
 
+import numpy as np
 import pytest
 from conftest import (
+    H264,
     click_time,
     decode_audio,
     ffprobe_json,
@@ -16,6 +20,7 @@ from conftest import (
     needs_ffmpeg,
     require_ffmpeg,
     require_source,
+    run_ffmpeg,
     stream,
     wav_info,
 )
@@ -81,6 +86,63 @@ def test_picture_and_sound_stay_aligned(batch, tmp_path, name):
     # both tracks of the working copy start at time 0
     assert float(stream(video, "video")["start_time"]) == pytest.approx(0, abs=0.001)
     assert float(stream(video, "audio")["start_time"]) == pytest.approx(0, abs=0.001)
+
+
+# --- phones whose audio timestamps disagree with the audio itself
+
+MOMENTS = (2.0, 30.0, 58.0)  # real instants with a flash in the picture and a click in the sound
+
+
+def phone_with_odd_audio_clock(path: Path, *, ppm: float = 0.0, jump_s: float = 0.0) -> Path:
+    """A 60 s phone video whose audio timestamps disagree with its samples, as real phones do.
+
+    `ppm`: the audio holds this many more samples per second than its timestamps say (a Galaxy S II
+    measured 314 ppm), because its sample clock runs fast. `jump_s`: the timestamps jump this far
+    after the first audio frame (a Galaxy Nexus measured 14-19 ms). The timestamps tell the truth.
+    """
+    stretch = 1 + ppm * 1e-6
+    lit = "+".join(f"between(t,{t},{t + 0.03})" for t in MOMENTS)
+    samples_at = [(t - jump_s) * stretch for t in MOMENTS]  # where the sample clock hears them
+    heard = "+".join(f"between(t,{t},{t + 0.02})" for t in samples_at)
+    video = f"color=c=navy:s=160x120:r=30:d=60,drawbox=w=iw:h=ih:c=white:t=fill:enable='{lit}'"
+    audio = (
+        f"aevalsrc='0.8*sin(2*PI*1000*t)*({heard})':s=44100:d=60,"
+        f"asetpts='PTS/{stretch}+gt(N,0)*{jump_s}/TB'"
+    )
+    run_ffmpeg(f"-f lavfi -i {video} -f lavfi -i {audio}", H264, "-c:a aac", path)
+    return path
+
+
+def flash_times(video: Path) -> list[float]:
+    stats = "-vf signalstats,metadata=mode=print:key=lavfi.signalstats.YAVG -f null -"
+    times, current = [], 0.0
+    for line in run_ffmpeg("-i", video, stats).stderr.splitlines():
+        if match := re.search(r"pts_time:([-\d.]+)", line):
+            current = float(match.group(1))
+        bright = (match := re.search(r"YAVG=([\d.]+)", line)) and float(match.group(1)) > 128
+        if bright and (not times or current - times[-1] > 1):
+            times.append(current)
+    return times
+
+
+def click_times(wav_path: Path) -> list[float]:
+    with wave.open(str(wav_path)) as wav:
+        rate, channels = wav.getframerate(), wav.getnchannels()
+        samples = np.frombuffer(wav.readframes(wav.getnframes()), dtype="<i2")[::channels]
+    loud = np.flatnonzero(np.abs(samples.astype(np.int32)) >= 0.3 * np.abs(samples).max())
+    return list(loud[np.concatenate([[True], np.diff(loud) > rate])] / rate)
+
+
+@pytest.mark.parametrize(
+    ("ppm", "jump_s"), [(2000.0, 0.0), (0.0, 0.016)], ids=["fast-sample-clock", "first-frame-jump"]
+)
+def test_sound_follows_the_timestamps_like_the_picture(tmp_path, ppm, jump_s):
+    source = phone_with_odd_audio_clock(tmp_path / "phone.mp4", ppm=ppm, jump_s=jump_s)
+    report = ingest("odd-clock", [source], data_dir=tmp_path / "data")
+    clip = load_manifest(report.event_dir).clips[0]
+    assert flash_times(report.event_dir / clip.proxy.video) == pytest.approx(MOMENTS, abs=0.001)
+    # without following the timestamps, the clicks drift up to 100 ms, or sit 16 ms early
+    assert click_times(report.event_dir / clip.proxy.audio) == pytest.approx(MOMENTS, abs=0.005)
 
 
 def test_working_copy_format(batch):
@@ -464,7 +526,7 @@ def test_one_crash_does_not_stop_the_batch(sources, tmp_path, monkeypatch):
 
 
 def test_unreadable_audio_falls_back_to_picture_only(sources, tmp_path, monkeypatch):
-    monkeypatch.setattr(media, "_audio_graph", lambda index, rate: f"[0:{index}]nosuchfilter[wav]")
+    monkeypatch.setattr(media, "_audio_graph", lambda index, *_: f"[0:{index}]nosuchfilter[wav]")
     inputs = copy_sources(sources, tmp_path / "in", "phone.mp4")
     report = ingest("audiofail", inputs, data_dir=tmp_path / "data")
     clip = report.results[0].clip
