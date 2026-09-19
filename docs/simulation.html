@@ -336,7 +336,7 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
     <div class="stage-head">
       <div class="where">src/scenefold/sync.py — weighted least squares, left-out residuals — <code>scenefold sync</code></div>
       <h2>5. Solve all clips together</h2>
-      <p>Every pair gets matched. Pairs that overlap too little or match too weakly are set aside. The rest are solved together, weighted by confidence, and each pair is then checked against the answer worked out <em>without</em> it. The worst pair beyond 20 ms is dropped and the solve repeats. Clips that never overlap still get placed through the clips between them.</p>
+      <p>Every pair gets matched. Pairs that overlap too little, match too weakly, or match in only part of their overlap (the same song on another night) are set aside. The rest are solved together, weighted by confidence, and each pair is then checked against the answer worked out <em>without</em> it. The worst pair beyond 20 ms is dropped and the solve repeats. Clips that never overlap still get placed through the clips between them.</p>
     </div>
     <div class="panel">
       <div class="controls">

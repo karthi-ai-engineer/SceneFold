@@ -57,9 +57,16 @@ right is not settled yet. On the same clips it matched
 [audalign](https://github.com/benfmiller/audalign) over 80 seconds and beat both over three minutes,
 where their lack of clock-drift handling shows (`tools/baselines.py`).
 
+**Different nights, same song.** Bands play along to backing tracks that are identical every night,
+so clips of the same song from two shows can match on the music alone. Sync checks that a match
+holds all through the overlap (the singing, talk, and crowd must line up too) and sets aside pairs
+that match only in parts, so clips from another night are reported instead of placed. Only the
+largest group is placed for now.
+
 **Known limits.** Sound that repeats exactly, like the same recorded song played twice, can match
 the wrong place when only two clips share it. A phone that moves while filming shifts its sound by
-about 3 ms per metre. Clips without usable sound can't be placed yet.
+about 3 ms per metre. Edited uploads (with cuts) can't be placed as one clip. Clips without usable
+sound can't be placed yet.
 
 `scenefold evaluate <event> <truth.json>` measures sync error against ground truth: moments such as
 claps, with their time in each clip that caught them.

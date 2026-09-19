@@ -103,11 +103,11 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
      and step through it in the viewer to see whether the Nexus S or the ground truth is right.
    - README GIF from consenting footage (the home recording, not Jiku: real people), tag `v0.1.0`,
      then PR `phase-3-viewer` → `main`, fast-forward merge once CI is green.
-2. **Sync: reject pairs whose windows disagree** (ROADMAP Phase 2, "Same song, different nights"):
-   with the Coldplay clips, same-night pairs agree in 85–100% of ±1 s-searched windows, different
-   nights ≤ 62%. Measure the spread on more data before choosing a threshold; mind looped music.
-3. Later (not Phase 3): a solver that weighs several candidate lags per pair would fix the repeated
-   chorus case (strict xfail test in `tests/test_sync.py`). With more than 6 clips, Chrome's limit
+2. ~~Reject pairs whose windows disagree~~ **Done (session 5):** `partial_match` (ROADMAP Phase 2).
+   Watch it on new footage: a true pair with a moving phone or an edit can fall under 0.9 too.
+3. Later (not Phase 3): place several groups (one per night or moment) instead of only the main
+   one; detect edits (cuts) inside uploaded clips; a solver that weighs several candidate lags per
+   pair would fix the repeated chorus case (strict xfail test in `tests/test_sync.py`). With more than 6 clips, Chrome's limit
    of 6 connections per host may queue video loading; check on a bigger event.
 
 ### Open questions / decisions still pending
@@ -265,3 +265,16 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    every picture within half a frame during playback, paused jumps exact.
 6. A screenshot caught a CSS bug the checks could not (`display: grid` beat the `hidden` attribute).
    Lesson: look at the page once, not only its numbers. Added section 8 to `docs/simulation.html`.
+7. Karthi asked to use YouTube clips for now. Downloaded 14 fan clips of Coldplay "Fix You" from
+   both Ahmedabad nights: all 14 landed on one clock (backing tracks match across nights). Window
+   agreement separated the nights; made `coldplay-jan25` (6) and `coldplay-jan26` (5), both pass.
+
+### Session 5: 2026-09-20, Acer Predator
+
+1. Measured window agreement on every labelled pair (Jiku, both Coldplay nights, cross-night,
+   synthetic loops) and built the `partial_match` rule into sync (`windows`, `agreement` per pair;
+   `min_agreement` 0.9, `agreement_windows` 2 in the settings). Dropped a "trust very confident
+   pairs" exception after a synthetic other-night pair reached confidence 4.9; judged short clips
+   after a 32 s clip bridged the nights. The mixed Coldplay set now splits; nothing else changed.
+2. The viewer's sync report shows each pair's agreement; unplaced clips that matched each other get
+   an honest reason. Agreement samples at most 24 windows (cost: ~1 s for a 10-minute pair).

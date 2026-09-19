@@ -225,8 +225,17 @@ The claps give ground truth for sync error and clock drift.
   placements are self-consistent (same song structure). What does separate them: searching each
   10 s window ±1 s, same-night pairs agree with the pair's lag in 85–100% of windows, different
   nights in at most 62%. Grouping by that gave two clean sets (6 clips on the 25th, 5 on the 26th)
-  that each sync completely. Next for sync: use window agreement as evidence against a pair.
-  YouTube uploads may also be edited (cuts), which breaks "one clip, one offset".
+  that each sync completely. YouTube uploads may also be edited (cuts), which breaks "one clip,
+  one offset".
+- **Partial matches set aside (2026-09-20):** every pair now also gets `windows` and `agreement`
+  (each 10 s window searched ±1 s, agreeing within 30 ms; up to 24 windows). A pair with at least
+  2 windows and agreement under 0.9 is set aside as `partial_match`, however confident: across
+  ~100 labelled real pairs (TOL 30 ms), true pairs scored 1.00 almost always (lowest 0.75), nights
+  apart 0.50–0.87, and a synthetic other-night pair reached confidence 4.9. Short clips are judged
+  too: a 32 s clip (1 of 3 windows agreeing) had bridged the two nights. Result: the mixed 14 clips
+  now split (the 26th placed, the 25th reported as a separate group), both single-night events and
+  both Jiku subsets place fully with unchanged errors. Unplaced clips that matched each other say
+  so ("matches other clips, but not the main group").
 - Done 2026-09-19: every "Done when" item is met. The home clap recording and the Nexus S check test
   picture sync, which the Phase 3 viewer makes easy to see, so they moved there.
 
