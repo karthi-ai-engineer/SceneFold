@@ -12,8 +12,8 @@ and trustworthy picture of what happened.**
 
 ## Status
 
-Early development. **Ingest and sync work today**; a synced multi-angle viewer comes next. Later
-phases add a cited story of the event, where the cameras disagree, and an automatic edit. See the
+Early development. **Ingest, sync, and a synced multi-angle viewer work today.** Later phases add a
+cited story of the event, where the cameras disagree, and an automatic edit. See the
 [roadmap](docs/ROADMAP.md) and the [project brief](docs/PROJECT_BRIEF.md).
 
 ## What ingest does
@@ -158,12 +158,34 @@ uv run scenefold evaluate my-event claps.json
 
 Clips are named by file name, or by clip ID when two files share a name.
 
+### Watching the clips together
+
+```sh
+uv run scenefold view my-event
+```
+
+This opens the viewer in your browser (served from your own computer only, `http://127.0.0.1:8765`).
+Every placed clip plays at once, lined up on the shared clock; clips that weren't recording at that
+moment say when they start or that they stopped.
+
+- **Space** plays or pauses; **←/→** jump 5 seconds; **, and .** step one frame; **1–9** pick whose
+  sound you hear. Click or drag the lanes under the videos to jump anywhere. 0.25× and 0.5× help
+  when checking a clap frame by frame.
+- **Sync health** shows, for every frame each video shows, how far it is from where the clock wants
+  it. On real phone clips it stays within half a frame; one frame at 30 fps is 33 ms.
+- **Sync report** shows which clips were placed, every pair measurement, and why any was set aside.
+
+The clock follows the clip you are listening to, so its sound is never sped up or slowed down; the
+other videos are nudged a little faster or slower to stay with it.
+
 ## Development
 
 ```sh
 uv run pytest                      # all tests; they generate small test videos with FFmpeg
 uv run ruff format src tests tools
 uv run ruff check src tests tools
+node --test web/tests/sync.test.mjs                               # the viewer's timing rules
+uv run --with playwright python tools/check_viewer.py my-event   # viewer sync, in headless Chrome
 ```
 
 The maintainer's clones use a commit guard that only accepts the maintainer's GitHub identity:
@@ -178,10 +200,10 @@ git config core.hooksPath .githooks
 
 ```
 src/scenefold/   pipeline code: cli, ingest, media (FFmpeg), manifest and timeline (data formats),
-                 audio_offset and sync (matching clips by sound), evaluate (sync error)
+                 audio_offset and sync (matching clips by sound), evaluate (sync error), view (server)
 tests/           tests
 tools/           developer scripts, e.g. fetching a public dataset to measure sync on real footage
-web/             viewer and UI (planned)
+web/             the viewer: plain HTML, CSS and JavaScript modules, no build step
 docs/            project brief and roadmap
 data/            your events; never committed
 ```

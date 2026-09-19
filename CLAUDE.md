@@ -31,6 +31,9 @@ uv run ruff format src tests tools && uv run ruff check src tests tools
 uv run scenefold ingest <event> <videos or folders>   # writes data/<event>/
 uv run scenefold sync <event>                         # writes data/<event>/timeline.json
 uv run scenefold evaluate <event> <truth.json>        # sync error against ground truth moments
+uv run scenefold view <event>                         # the synced viewer at http://127.0.0.1:8765
+node --test web/tests/sync.test.mjs                   # the viewer's timing rules (Node 18+)
+uv run --with playwright python tools/check_viewer.py <event>   # viewer sync, headless Chrome
 uv run python tools/jiku.py jiku-saf                  # real phone clips + sync ground truth (786 MB)
 ```
 

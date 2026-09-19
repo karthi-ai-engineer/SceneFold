@@ -52,7 +52,8 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 203 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 262 passed, 1 xfailed (the known chorus limit)
+node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+)
 ```
 
 - **Clone outside OneDrive/Dropbox.** Windows often syncs Desktop and Documents; footage in `data/` and
@@ -73,7 +74,7 @@ uv run pytest                      # expect 203 passed, 1 xfailed (the known cho
 | 0 Foundation | Done | `main` |
 | 1 Ingest | Done; checked on 12 real Jiku phone clips; sound now follows file timestamps | `main` |
 | 2 Sync | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines | `main` (merged from `phase-2-sync`) |
-| 3 Synced viewer | Next; carries the visual sync checks | start `phase-3-viewer` from `main` |
+| 3 Synced viewer | **In progress**: `scenefold view` works; every picture within half a frame on real clips | branch `phase-3-viewer` (not merged) |
 | 4–9 | Not started | |
 
 - Results and findings: `docs/ROADMAP.md`, Phase 2 "Progress". In short: on two real Jiku subsets,
@@ -85,16 +86,19 @@ uv run pytest                      # expect 203 passed, 1 xfailed (the known cho
 
 ### Next steps, in order
 
-1. **Phase 3, synced viewer** on a new branch `phase-3-viewer` from `main` → first demo `v0.1.0`
-   (ROADMAP Phase 3). Use `1 + drift_ppm/1e6` as each clip's playback rate. Add its section to
-   `docs/simulation.html`.
-2. **Home clap recording (Karthi).** ~1 minute, 2–3 phones at once, a visible, sharp clap at the start
-   and the end, some walking. Then `scenefold ingest`, `sync`, `evaluate` with the clap times (README
-   "Checking sync with claps"), and look at it in the viewer: first check of picture sync.
-3. **Nexus S check** in the viewer: a moment both seen and heard by the Nexus S and another phone in
-   `jiku-saf-long` shows which placement is right.
-4. Later (not Phase 3): a solver that weighs several candidate lags per pair would fix the repeated
-   chorus case (strict xfail test in `tests/test_sync.py`).
+1. **Finish Phase 3** on `phase-3-viewer` (ROADMAP Phase 3 "Progress" lists what is done):
+   - Run `scenefold view` and `tools/check_viewer.py` on the Windows i5 laptop (no dedicated GPU),
+     with 4+ clips: the Done-when asks for sync on such a laptop.
+   - **Home clap recording (Karthi).** ~1 minute, 2–3 phones, a visible sharp clap at the start and
+     the end, some walking. `scenefold ingest`, `sync`, `evaluate` with the clap times (README), then
+     step through the claps frame by frame in the viewer: the first check of picture sync.
+   - **Nexus S check:** in `jiku-saf-long`, find a moment both seen and heard (a light cue or a hit)
+     and step through it in the viewer to see whether the Nexus S or the ground truth is right.
+   - README GIF from consenting footage (the home recording, not Jiku: real people), tag `v0.1.0`,
+     then PR `phase-3-viewer` → `main`, fast-forward merge once CI is green.
+2. Later (not Phase 3): a solver that weighs several candidate lags per pair would fix the repeated
+   chorus case (strict xfail test in `tests/test_sync.py`). With more than 6 clips, Chrome's limit
+   of 6 connections per host may queue video loading; check on a bigger event.
 
 ### Open questions / decisions still pending
 
@@ -134,6 +138,10 @@ uv run pytest                      # expect 203 passed, 1 xfailed (the known cho
 - **Evaluation:** ground truth = moments with a clip time per clip; error per pair of placed clips
   (independent of where master time 0 is); report median, p95, worst, pairs within 33 ms.
 - **`tools/`:** developer scripts that aren't part of the pipeline (dataset fetch, baselines); linted in CI.
+- **Viewer (Phase 3):** stdlib `ThreadingHTTPServer` on 127.0.0.1 with Range support and a Host check;
+  plain ES modules in `web/`, no build step, timing rules in `web/sync.js` (Node tests). One master
+  clock follows the heard clip's shown frames (rVFC); other videos are steered per frame (trim ±0.3%,
+  corrections 1–10%, jump > 0.35 s aimed ahead by the clip's measured jump time).
 - **Later phases (planned):** analyze each clip independently with the VLM (independent witnesses make
   disagreements meaningful); SQLite instead of Neo4j; citations validated in code; director's cut
   switches picture but keeps one continuous audio track; license Apache-2.0 (YOLO/BoxMOT are AGPL, so
@@ -158,6 +166,11 @@ uv run pytest                      # expect 203 passed, 1 xfailed (the known cho
   [Environment]::GetEnvironmentVariable('Path','Machine');`. PowerShell 5.1 mangles here-strings piped
   to `git commit -F -`; write the message to a file and use `git commit -F <file>`.
 - **Timing:** the test suite takes ~41 s on the Predator, but ~150 s while an agent runs FFmpeg ingest.
+- **Chrome video playback:** rates within ±0.1% of 1.0 play as normal speed, and entering that band
+  stalls a video for about a frame; a jump while playing stalls while it decodes from the keyframe;
+  sound starts up to 0.7 s after pictures in headless Chrome. Playwright's own Chromium has no
+  H.264: use `channel="chrome"`. Test page ideas in a scratch HTML under `web/` (served by the
+  viewer), then delete it.
 - **Real phone audio is messier than FFmpeg's view of it:** sample counts that disagree with timestamps
   (Galaxy S II), a first-packet timestamp jump (Galaxy Nexus), edit lists (Nexus S), clipped concert
   sound, phones that move. Check ingest against real clips, not only generated ones.
@@ -230,5 +243,15 @@ uv run pytest                      # expect 203 passed, 1 xfailed (the known cho
    `tools/baselines.py` now scores at the same moments as `scenefold evaluate` (its old per-pair
    start lag was thrown off by the 16 ms first-frame jump). Re-ran everything: accuracy held; over ~3
    minutes Scenefold beats both baselines, over 80 s they are close.
-4. Closed Phase 2 (Done-when met); the clap and Nexus S checks moved to Phase 3. PR and fast-forward
-   merge into `main`.
+4. Closed Phase 2 (Done-when met); the clap and Nexus S checks moved to Phase 3. PR #2, fast-forward
+   merge into `main`, branch deleted.
+5. Phase 3 on `phase-3-viewer`. An agent built the server and `scenefold view` (59 tests, Host-header
+   check against DNS rebinding); I wrote the viewer (`web/`) and `tools/check_viewer.py`, which plays
+   an event in headless Chrome (Playwright, `channel="chrome"`) and reads the viewer's own per-frame
+   errors. First runs were 16–45 ms off with repeated jumps; experiments found why (ROADMAP Phase 3
+   "Progress"): Chrome stalls a video each time its rate enters the ±0.1% band around 1.0, jumps land
+   late unless aimed ahead by the clip's own jump time, the heard clip's `currentTime` shifts once its
+   sound settles, and a joining clip needs a moment to start. After the fixes both Jiku subsets pass:
+   every picture within half a frame during playback, paused jumps exact.
+6. A screenshot caught a CSS bug the checks could not (`display: grid` beat the `hidden` attribute).
+   Lesson: look at the page once, not only its numbers. Added section 8 to `docs/simulation.html`.

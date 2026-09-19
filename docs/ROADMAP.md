@@ -12,7 +12,7 @@ Last updated: 2026-09-17
 | 0 | Foundation | — | 1 | Done |
 | 1 | Ingest | 1 | 1 | Done; checked on 12 real phone clips (sound now follows the file timestamps) |
 | 2 | Sync | 2 | 1–2 | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines |
-| 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Next; also carries the visual sync checks (claps, Nexus S) |
+| 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | In progress: viewer works, every picture within half a frame on real clips; laptop test, visual checks, GIF left |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Not started |
 | 5 | Clip understanding | 4 | 2 | Not started |
 | 6 | Event knowledge + conflicts | 6, 8 | 2 | Not started |
@@ -245,6 +245,35 @@ The claps give ground truth for sync error and clock drift.
 - Scrubbing and seeking never leave videos out of sync.
 - README shows a GIF of the viewer; tag `v0.1.0`; first progress post.
 
+**Progress (2026-09-19)**
+- Done: `scenefold view` (local server with Range support, `view.py`), the viewer in `web/` (tiles,
+  coverage lanes, frame stepping, slow motion, sound picker, sync health, sync report), its timing
+  rules in `web/sync.js` with Node tests in CI, and `tools/check_viewer.py` (headless Chrome).
+- Measured with `tools/check_viewer.py` in headless Chrome on the Predator (6 real clips at 720p per
+  Jiku subset, ~15 s from 3 points each, then 8 random jumps):
+
+  | Check | `jiku-saf` | `jiku-saf-long` |
+  |---|---|---|
+  | Playback, every clip: mean / p95 / worst error | 3–4 / 5–12 / ≤ 19 ms | 3–4 / 5–10 / ≤ 13 ms |
+  | Jumps while paused: furthest video | 0.00 ms | 0.00 ms |
+  | Jumps while playing, 1–3 s after: worst p95 | ≤ 17 ms | ≤ 19 ms |
+
+- What it took (measured in Chrome, each worth knowing for any multi-video player):
+  - Chrome plays any rate within 0.1% of 1.0 as normal speed, and stalls a video for about a frame
+    each time its rate enters that band: flipping 1.001 ↔ 1.06 every frame played at 0.87×, while
+    1.002 ↔ 1.06 played at 1.03×. So silent videos never sit at their own rate: on time they trim
+    0.3% toward the clock, and corrections are at least 1%. The clip being heard keeps its rate.
+  - A jump while playing stalls the picture while Chrome decodes from the previous keyframe; aiming
+    ahead by each clip's own measured jump time lands it within a frame.
+  - Sound starts later than pictures (up to 0.7 s in headless Chrome), and `currentTime` of the
+    heard clip jumps once its output settles. The clock follows the heard clip's shown frames
+    instead, and the pictures start only once its sound is moving.
+  - A clip that starts recording mid-playback waits on its first frame and is started a learned
+    moment early (a paused video needs ~60 ms to get going).
+- Left: run it on a laptop without a dedicated GPU (the Windows i5 laptop); the visual sync checks
+  (home clap recording, Nexus S); a README GIF from consenting footage (the Jiku clips show real
+  people, so not those); tag `v0.1.0`.
+
 ---
 
 ## Phase 4: Quality cut (no AI)
@@ -417,6 +446,8 @@ Checked 2026-09-17. Versions, model names, and prices change quickly, so recheck
 
 **Viewer (Phase 3)**
 - `requestVideoFrameCallback` works in all major browsers since Oct 2024. https://caniuse.com/mdn-api_htmlvideoelement_requestvideoframecallback
+- Playwright's bundled Chromium has no H.264; `channel="chrome"` drives the installed Google Chrome.
+- Chrome allows 6 connections per host: with more than 6 clips, `preload="auto"` may queue loads.
 - Master clock with `playbackRate` nudging: timingsrc (MIT) https://github.com/chrisguttandin/timingsrc, or ~100 lines of our own.
   Variable `playbackRate` is unreliable on iOS.
 

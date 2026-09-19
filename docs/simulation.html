@@ -194,7 +194,8 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
       <li><span class="chip built"><span class="dot"></span>Ingest</span></li>
       <li><span class="chip built"><span class="dot"></span>Sync by sound</span></li>
       <li><span class="chip built"><span class="dot"></span>Evaluate</span></li>
-      <li><span class="chip next"><span class="dot"></span>Synced viewer (next)</span></li>
+      <li><span class="chip built"><span class="dot"></span>Synced viewer</span></li>
+      <li><span class="chip next"><span class="dot"></span>Quality cut (next)</span></li>
     </ol>
   </header>
 </div>
@@ -208,6 +209,7 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
     <li><a href="#solve"><span>5</span>Solve all clips</a></li>
     <li><a href="#evaluate"><span>6</span>Check accuracy</a></li>
     <li><a href="#output"><span>7</span>Output</a></li>
+    <li><a href="#viewer"><span>8</span>Watch together</a></li>
   </ol>
 </nav>
 
@@ -398,9 +400,30 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
     </div>
   </section>
 
+  <section class="stage" id="viewer">
+    <div class="stage-head">
+      <div class="where">web/app.js · web/sync.js — <code>scenefold view</code></div>
+      <h2>8. Watch them together</h2>
+      <p>Every placed clip plays at once on one master clock, which follows the frames of the clip being heard, so its sound is never sped up or slowed down. Every other video is checked on each frame it shows and steered: 0.3% faster or slower while on time, at least 1% to catch up, a jump when far off. Real players are slightly off in speed and sometimes stall; switch steering off and watch the pictures drift apart.</p>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <label class="field inline"><input type="checkbox" id="vw-steer" checked>Steering on</label>
+        <button id="vw-stall">Make one video stall</button>
+        <button id="vw-jump">Jump to a clap</button>
+        <button id="vw-play" class="primary">▶ Play</button>
+        <span class="note" id="vw-status"></span>
+      </div>
+      <div class="fig-title"><span>Tiles flash when the frame they show catches a clap. In sync, they flash together.</span><span id="vw-clock" class="num"></span></div>
+      <canvas id="vw-tiles" class="chart" width="1080" height="230" aria-label="Simulated video tiles"></canvas>
+      <div class="fig-title"><span>Each video's error on every frame it shows (ms). The band is half a frame either way.</span></div>
+      <canvas id="vw-errors" class="chart" width="1080" height="200" aria-label="Per-frame sync error of each simulated video"></canvas>
+    </div>
+  </section>
+
   <footer>
     <div>Imaginary data, invented in your browser. Sound is simulated at 1,000 samples per second (the real code uses 8,000) so every step runs live.</div>
-    <div>Next phase to add here: the synced viewer.</div>
+    <div>Next phase to add here: the quality cut (Phase 4).</div>
   </footer>
 </main>
 <div id="tip" hidden></div>
@@ -1387,6 +1410,176 @@ STAGES.drift = (() => {
   });
   $("drift-run").addEventListener("click", run);
   return { reset() { if ($("drift-source").value === "pair") lab = null; shownWindows = 0; showLine = false; $("drift-status").textContent = ""; }, render };
+})();
+</script>
+<script>
+/* ================= 8. watch them together (web/app.js, web/sync.js) ================= */
+// Steering, copied from web/sync.js so this page stays one file: keep the two in step.
+const VW = { SEEK_S: 0.35, CATCH_UP_S: 0.5, MAX_NUDGE: 0.1, SMOOTHING: 0.15, LOCK_S: 0.005, UNLOCK_S: 0.01, MIN_NUDGE: 0.01, TRIM: 0.003, TRIM_TURN_S: 0.002 };
+class Steering {
+  constructor() { this.reset(); }
+  reset() { this.error = 0; this.correcting = false; this.trim = 1; }
+  update(errorS, baseRate) {
+    if (Math.abs(errorS) > VW.SEEK_S) { this.reset(); return { seek: true }; }
+    this.error += VW.SMOOTHING * (errorS - this.error);
+    const size = Math.abs(this.error);
+    if (this.correcting && size < VW.LOCK_S) this.correcting = false;
+    else if (!this.correcting && size > VW.UNLOCK_S) this.correcting = true;
+    if (!this.correcting) {
+      if (this.error > VW.TRIM_TURN_S) this.trim = -1;
+      else if (this.error < -VW.TRIM_TURN_S) this.trim = 1;
+      return { seek: false, rate: baseRate * (1 + this.trim * VW.TRIM) };
+    }
+    const nudge = Math.min(VW.MAX_NUDGE, Math.max(VW.MIN_NUDGE, size / VW.CATCH_UP_S));
+    return { seek: false, rate: baseRate * (1 - Math.sign(this.error) * nudge) };
+  }
+}
+
+STAGES.viewer = (() => {
+  const tiles = $("vw-tiles"), chart = $("vw-errors");
+  let sim = null, loop = 0, lastNow = 0;
+  const FPS = 30;
+  const rateOf = (c) => 1 + c.drift * 1e-6;
+  const localOf = (c, t) => (t - c.offset) * rateOf(c);
+  const realOf = (c, local) => c.ph.start + local / (1 + c.ph.drift_ppm * 1e-6); // the hidden truth
+
+  async function build() {
+    const solution = await STAGES.solve.ensure();
+    const r = rng(S.event.seed + 5);
+    const placed = S.event.phones.filter((ph) => ph.related && ph.clip_id in solution.offsets);
+    const clips = placed.map((ph, i) => ({
+      ph, offset: solution.offsets[ph.clip_id], drift: solution.drift_ppm[ph.clip_id] ?? 0,
+      // a real player runs a little off the speed it is asked for (Chrome: 1.043 when asked 1.05)
+      skew: (r() * 2 - 1) * 0.004, media: 0, rate: 1, stallUntil: 0, frame: -1, errors: [],
+      steer: new Steering(), audible: i === 0,
+    }));
+    const end = Math.max(...clips.map((c) => c.offset + c.ph.seconds / rateOf(c)));
+    // begin where the most clips are recording at once, so there is something to keep together
+    const recordingAt = (t) => clips.filter((c) => localOf(c, t) >= 0 && localOf(c, t) < c.ph.seconds).length;
+    const start = clips.map((c) => c.offset + 0.5).reduce((best, t) => (recordingAt(t) > recordingAt(best) ? t : best));
+    const s = { clips, t: start, start, end, playing: false, jumps: 0 };
+    moveAll(s, start, performance.now());
+    return s;
+  }
+
+  function moveAll(s, t, now) {
+    s.t = t;
+    const r = rng(Math.floor(now));
+    for (const c of s.clips) {
+      c.media = Math.max(0, Math.min(c.ph.seconds, localOf(c, t)));
+      c.frame = -1;
+      c.steer.reset();
+      c.rate = rateOf(c);
+      c.stallUntil = c.audible ? 0 : now + 30 + r() * 60; // videos start at slightly different moments
+    }
+  }
+
+  function step(dt, now) {
+    if (!sim.playing) return;
+    sim.t += dt;
+    if (sim.t >= sim.end) { sim.playing = false; $("vw-play").textContent = "▶ Play"; return; }
+    const steering = $("vw-steer").checked;
+    for (const c of sim.clips) {
+      const local = localOf(c, sim.t);
+      if (local < 0 || local >= c.ph.seconds) { c.media = Math.max(0, Math.min(c.ph.seconds, local)); c.frame = -1; continue; }
+      if (now < c.stallUntil) continue; // stalled: its picture is frozen
+      c.media += dt * c.rate * (1 + (c.audible ? 0 : c.skew));
+      const frame = Math.floor(c.media * FPS);
+      if (frame === c.frame) continue;
+      c.frame = frame; // a new frame is shown: how far is it from where the clock wants it?
+      const error = frame / FPS - localOf(c, sim.t);
+      c.errors.push([sim.t, error * 1000]);
+      while (c.errors.length && c.errors[0][0] < sim.t - 10) c.errors.shift();
+      if (c.audible) { sim.t += (0.1 * error) / rateOf(c); continue; } // the clock follows its frames
+      if (!steering) { c.rate = rateOf(c); continue; }
+      const fix = c.steer.update(error, rateOf(c));
+      if (fix.seek) { c.media = localOf(c, sim.t + 0.25); c.stallUntil = now + 250; sim.jumps++; }
+      else c.rate = fix.rate;
+    }
+  }
+
+  function drawTiles() {
+    const g = setup(tiles);
+    if (!sim) {
+      g.fontPx(13); g.fillStyle = css("--muted"); g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("Press Play to watch the placed clips together.", tiles._w / 2, tiles._h / 2);
+      return;
+    }
+    const n = sim.clips.length, gap = 10, w = (tiles._w - gap * (n - 1)) / n, h = tiles._h - 10;
+    sim.clips.forEach((c, i) => {
+      const x = i * (w + gap), local = localOf(c, sim.t), on = local >= 0 && local < c.ph.seconds;
+      g.fillStyle = "#101113"; g.beginPath(); g.roundRect(x, 0, w, h, 8); g.fill();
+      const shown = Math.max(0, c.frame) / FPS, real = realOf(c, shown);
+      const flash = on && c.frame >= 0 && CLAPS.some((clap) => real >= clap && real < clap + 0.12);
+      if (flash) { g.fillStyle = "rgba(255,255,255,0.85)"; g.beginPath(); g.roundRect(x, 0, w, h, 8); g.fill(); }
+      g.strokeStyle = colorOf(c.ph); g.lineWidth = c.audible ? 3 : 1.5;
+      g.beginPath(); g.roundRect(x + 1, 1, w - 2, h - 2, 8); g.stroke(); g.lineWidth = 1;
+      g.fillStyle = flash ? "#101113" : "#f2f2ef"; g.textAlign = "left"; g.textBaseline = "top";
+      g.fontPx(12, 600); g.fillText(`${c.ph.name}${c.audible ? " · sound" : ""}`, x + 10, 10);
+      g.fontPx(22, 500, true);
+      g.fillText(on ? `frame ${Math.max(0, c.frame)}` : local < 0 ? "not yet" : "stopped", x + 10, h / 2 - 12);
+      const lastErr = c.errors.length ? c.errors[c.errors.length - 1][1] : null;
+      g.fontPx(12, 400, true);
+      g.fillText(on && lastErr !== null ? `${signed(lastErr, 1)} ms` : "", x + 10, h - 24);
+    });
+    $("vw-clock").textContent = `clock ${(sim.t - sim.start).toFixed(2)} s · jumps ${sim.jumps}`;
+  }
+
+  function drawErrors() {
+    const g = setup(chart);
+    if (!sim) return;
+    const box = { l: 52, r: 1064, t: 14, b: 176 }, t1 = Math.max(sim.t, sim.start + 10), t0 = t1 - 10;
+    const { X, Y } = plotArea(g, chart, box, t0, t1, -60, 60, { xTicks: 5, xFmt: (v) => `${(v - sim.start).toFixed(0)} s`, yFmt: (v) => `${v} ms`, yTicks: 4 });
+    g.fillStyle = css("--band"); g.fillRect(box.l, Y(1000 / 60), box.r - box.l, Y(-1000 / 60) - Y(1000 / 60));
+    for (const c of sim.clips) {
+      g.strokeStyle = colorOf(c.ph); g.lineWidth = 2; g.beginPath();
+      c.errors.filter(([t]) => t >= t0).forEach(([t, e], k) => {
+        const y = Y(Math.max(-60, Math.min(60, e)));
+        k ? g.lineTo(X(t), y) : g.moveTo(X(t), y);
+      });
+      g.stroke();
+    }
+    g.lineWidth = 1;
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.1, (now - lastNow) / 1000);
+    lastNow = now;
+    if (sim) step(dt, now);
+    drawTiles(); drawErrors();
+    loop = sim?.playing ? requestAnimationFrame(frame) : 0;
+  }
+
+  async function play() {
+    if (!sim) { $("vw-status").textContent = "Solving the clips first…"; sim = await build(); $("vw-status").textContent = ""; }
+    sim.playing = !sim.playing;
+    if (sim.playing && sim.t >= sim.end - 0.1) moveAll(sim, sim.start, performance.now());
+    $("vw-play").textContent = sim.playing ? "❚❚ Pause" : "▶ Play";
+    lastNow = performance.now();
+    if (sim.playing && !loop) loop = requestAnimationFrame(frame);
+    if (!sim.playing) { drawTiles(); drawErrors(); }
+  }
+
+  $("vw-play").addEventListener("click", play);
+  $("vw-stall").addEventListener("click", () => {
+    if (!sim) return;
+    const silent = sim.clips.filter((c) => !c.audible && localOf(c, sim.t) >= 0 && localOf(c, sim.t) < c.ph.seconds);
+    if (!silent.length) return;
+    const c = silent[Math.floor(Math.random() * silent.length)];
+    c.stallUntil = performance.now() + 400;
+    $("vw-status").textContent = `${c.ph.name} stalled for 0.4 s`;
+  });
+  $("vw-jump").addEventListener("click", async () => {
+    if (!sim) sim = await build();
+    const clap = CLAPS.find((t) => t - 1.5 > sim.start && t < sim.end && sim.clips.filter((c) => { const l = localOf(c, t); return l >= 0 && l < c.ph.seconds; }).length > 1) ?? CLAPS[0];
+    moveAll(sim, clap - 1.5, performance.now());
+    $("vw-status").textContent = `Jumped to 1.5 s before a clap`;
+    if (!sim.playing) await play();
+  });
+  return {
+    reset() { sim = null; if (loop) cancelAnimationFrame(loop); loop = 0; $("vw-play").textContent = "▶ Play"; $("vw-status").textContent = ""; },
+    render() { drawTiles(); drawErrors(); },
+  };
 })();
 </script>
 <script>
