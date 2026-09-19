@@ -31,6 +31,8 @@ jobs:
       - run: uv sync --locked
       - run: uv run --locked ruff format --check src tests tools
       - run: uv run --locked ruff check src tests tools
+      # the viewer's timing rules (plain ES modules, Node's built-in test runner)
+      - run: node --test web/tests/sync.test.mjs
 
   test:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository

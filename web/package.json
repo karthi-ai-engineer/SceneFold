@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Scenefold viewer: plain ES modules, no build step. Test with `node --test \"web/tests/*.test.mjs\"`."
+}

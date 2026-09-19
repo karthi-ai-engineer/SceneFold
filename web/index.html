@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scenefold Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>Scenefold</div>
+    <div class="event"><span id="event-name">Loading…</span><span id="event-meta" class="muted"></span></div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" id="tab-viewer" aria-selected="true" aria-controls="viewer">Viewer</button>
+      <button role="tab" id="tab-report" aria-selected="false" aria-controls="report">Sync report</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="viewer" role="tabpanel" aria-labelledby="tab-viewer">
+      <div id="tiles" class="tiles" aria-live="off"></div>
+
+      <div class="transport" role="group" aria-label="Playback">
+        <button id="play" class="play" aria-label="Play" title="Play or pause (Space)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path id="play-icon" d="M8 5v14l11-7z" fill="currentColor"/></svg>
+        </button>
+        <button id="back-frame" title="One frame back (,)" aria-label="One frame back">‹ frame</button>
+        <button id="next-frame" title="One frame forward (.)" aria-label="One frame forward">frame ›</button>
+        <button id="back-5" title="5 seconds back (←)" aria-label="5 seconds back">−5 s</button>
+        <button id="next-5" title="5 seconds forward (→)" aria-label="5 seconds forward">+5 s</button>
+        <div class="clock"><span id="time" class="mono">0:00.000</span><span class="muted mono" id="span"></span></div>
+        <label class="speed">Speed
+          <select id="speed">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+          </select>
+        </label>
+        <label class="speed">Sound from
+          <select id="audio"></select>
+        </label>
+      </div>
+
+      <div class="lanes-wrap">
+        <canvas id="lanes" height="120" aria-label="Where each clip was recording on the shared clock; click to jump"></canvas>
+      </div>
+      <p id="unplaced" class="muted small"></p>
+
+      <details id="health" class="health" open>
+        <summary>Sync health <span class="muted">— how far each picture is from where the shared clock wants it, measured on every frame shown</span></summary>
+        <div class="table-wrap"><table id="health-table"></table></div>
+      </details>
+    </section>
+
+    <section id="report" role="tabpanel" aria-labelledby="tab-report" hidden>
+      <div id="report-summary" class="summary"></div>
+      <div class="report-grid">
+        <figure class="graph-card">
+          <figcaption>Pairs of clips compared by sound. Solid lines placed clips; dashed lines were set aside.</figcaption>
+          <svg id="pair-graph" viewBox="0 0 520 420" role="img" aria-label="Graph of clips and the pair measurements between them"></svg>
+        </figure>
+        <div class="table-wrap"><table id="clip-table"></table></div>
+      </div>
+      <div class="table-wrap"><table id="pair-table"></table></div>
+    </section>
+  </main>
+
+  <noscript><p class="muted">The viewer needs JavaScript.</p></noscript>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
