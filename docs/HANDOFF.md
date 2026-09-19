@@ -83,6 +83,13 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 - Jiku data is local only: `data/_downloads/jiku/` (clips, ground truth XML and JSON), workspaces
   `data/jiku-saf/` and `data/jiku-saf-long/`. On a new machine, `uv run python tools/jiku.py jiku-saf`
   fetches it again (786 MB; `jiku-saf-long` is 1.54 GB), then ingest, sync, evaluate.
+- **YouTube test set (personal testing only, never committed):** Karthi asked to use YouTube clips
+  instead of a home recording for now. Coldplay "Fix You", Narendra Modi Stadium, Ahmedabad:
+  - `coldplay-jan25` (6 clips): 27fb9PAtqWA TOmDG24_lA8 VSqpJ9M3viA iFxmnXwaSls mGAFbbACfxg pzqNetFpSMY
+  - `coldplay-jan26` (5 clips): 5yzlgOigdTE UY_LoABsuR0 gMdI4i8aOlk uBLMlXD8Dzg xa_Anul1-7A
+  - Download (portrait clips need the width limit):
+    `uv run --no-project --with yt-dlp yt-dlp -f "bv*[height<=720][width<=1280]+ba[ext=m4a]/bv*[width<=720]+ba" --merge-output-format mp4 -o "data/_downloads/youtube/coldplay-fix-you/%(channel).24B %(id)s.%(ext)s" <urls>`
+  - Then `scenefold ingest coldplay-jan25 <its 6 files>`, `sync`, `view`. Both pass `check_viewer.py`.
 
 ### Next steps, in order
 
@@ -96,7 +103,10 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
      and step through it in the viewer to see whether the Nexus S or the ground truth is right.
    - README GIF from consenting footage (the home recording, not Jiku: real people), tag `v0.1.0`,
      then PR `phase-3-viewer` → `main`, fast-forward merge once CI is green.
-2. Later (not Phase 3): a solver that weighs several candidate lags per pair would fix the repeated
+2. **Sync: reject pairs whose windows disagree** (ROADMAP Phase 2, "Same song, different nights"):
+   with the Coldplay clips, same-night pairs agree in 85–100% of ±1 s-searched windows, different
+   nights ≤ 62%. Measure the spread on more data before choosing a threshold; mind looped music.
+3. Later (not Phase 3): a solver that weighs several candidate lags per pair would fix the repeated
    chorus case (strict xfail test in `tests/test_sync.py`). With more than 6 clips, Chrome's limit
    of 6 connections per host may queue video loading; check on a bigger event.
 

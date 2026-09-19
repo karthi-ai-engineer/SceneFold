@@ -218,6 +218,15 @@ The claps give ground truth for sync error and clock drift.
 - Known limit: identical repeated sound (a recorded chorus played twice) shared by only two clips
   matches the wrong place, and a clip that heard both repeats makes the true pairs ambiguous
   (strict xfail test). Fixing it needs a solver that weighs several candidate lags per pair.
+- **Same song, different nights (YouTube test, 2026-09-19):** 14 fan clips of Coldplay's "Fix You"
+  from both Ahmedabad shows (25 and 26 Jan 2025) all landed on one clock. Stadium bands play to
+  backing tracks that are identical every night, so clips from different nights match on the music
+  (confidence 1.0–2.4) about as well as same-night clips through a stadium crowd (1.7–7.5), and the
+  placements are self-consistent (same song structure). What does separate them: searching each
+  10 s window ±1 s, same-night pairs agree with the pair's lag in 85–100% of windows, different
+  nights in at most 62%. Grouping by that gave two clean sets (6 clips on the 25th, 5 on the 26th)
+  that each sync completely. Next for sync: use window agreement as evidence against a pair.
+  YouTube uploads may also be edited (cuts), which breaks "one clip, one offset".
 - Done 2026-09-19: every "Done when" item is met. The home clap recording and the Nexus S check test
   picture sync, which the Phase 3 viewer makes easy to see, so they moved there.
 
