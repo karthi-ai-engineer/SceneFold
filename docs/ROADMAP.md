@@ -10,9 +10,9 @@ Last updated: 2026-09-17
 | Phase | Name | Brief outcomes | Rough size (3 h sessions) | Status |
 |---|---|---|---|---|
 | 0 | Foundation | — | 1 | Done |
-| 1 | Ingest | 1 | 1 | Done on generated clips; recheck with real phone footage |
-| 2 | Sync | 2 | 1–2 | In progress: sync with drift works on synthetic and real (Jiku) clips, ahead of two baselines; home recording and ingest audio timing left |
-| 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Not started |
+| 1 | Ingest | 1 | 1 | Done; checked on 12 real phone clips (sound now follows the file timestamps) |
+| 2 | Sync | 2 | 1–2 | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines |
+| 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Next; also carries the visual sync checks (claps, Nexus S) |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Not started |
 | 5 | Clip understanding | 4 | 2 | Not started |
 | 6 | Event knowledge + conflicts | 6, 8 | 2 | Not started |
@@ -127,7 +127,9 @@ The claps give ground truth for sync error and clock drift.
   non-square-pixel video, 5.1 audio, silent and clipped audio, half-downloaded and broken files,
   duplicates, moved files, changed settings, locked or corrupt workspaces, and non-video files.
 - Speed on this laptop (i5-1334U, CPU only): a 10 s 4K HDR portrait clip plus a 30 s 1080p clip took 9.8 s.
-- Not yet tried on real phone footage.
+- Real phone footage (12 Jiku clips, 2026-09-17): all ok; working copies of 1080p clips take ~7–12 s
+  each on the Predator. Fixed 2026-09-19: sound now follows the file's timestamps like the picture
+  (some phones' audio sample counts disagree with their timestamps; see Phase 2 findings).
 
 ---
 
@@ -170,35 +172,43 @@ The claps give ground truth for sync error and clock drift.
 - Synthetic: offsets within 0.2 ms with drift up to 460 ppm and overlaps up to 20 min; unrelated audio
   scores 1.0–1.1 (threshold 2.0). Without drift handling, 10 min at 100 ppm had fallen to 1.9.
 - Jiku, event SAF_290512: two subsets of 6 clips from 3 phone models (Galaxy S II, Galaxy Nexus,
-  Nexus S). Pair errors at moments every 10 s against the published ground truth:
+  Nexus S). Pair errors at moments every 10 s against the published ground truth, with working copies
+  whose sound follows the file timestamps (2026-09-19; the ground truth's sample-counted times are
+  moved onto each file's timestamps by `tools/jiku.py`):
 
   | Subset | Placed | Sync time | All pairs: median / p95 / worst | Within 33 ms | Without the Nexus S |
   |---|---|---|---|---|---|
-  | `jiku-saf`, ~80 s overlap | 6 of 6 | 3.8 s | 13.2 / 99.9 / 110.7 ms | 68% | 8.7 / 20.7 / 25.8 ms, 100% |
-  | `jiku-saf-long`, ~174 s overlap | 6 of 6 | 7.1 s | 3.3 / 81.2 / 88.4 ms | 68% | 2.5 / 4.1 / 4.3 ms, 100% |
+  | `jiku-saf`, ~80 s overlap | 6 of 6 | ~4 s | 12.0 / 99.9 / 110.7 ms | 68% | 8.5 / 21.7 / 25.5 ms, 100% |
+  | `jiku-saf-long`, ~174 s overlap | 6 of 6 | ~7 s | 3.9 / 78.1 / 85.3 ms | 68% | 2.1 / 5.7 / 6.4 ms, 100% |
 
-- Baselines on the same working WAVs and ground truth (`tools/baselines.py`, Python 3.12 via uv). Lag
-  error per pair at clip start, 10 pairs without the Nexus S, median / worst in ms, and run time:
+  (Before the ingest fix, with sample-counted sound: 8.7 / 20.7 / 25.8 and 2.5 / 4.1 / 4.3 ms.)
+- Baselines on the same working WAVs, scored like `scenefold evaluate` (`tools/baselines.py`, Python
+  3.12 via uv): each method predicts one clip's time of a ground-truth moment from the other's.
+  Without the Nexus S, median / worst in ms, and moments within one frame:
 
-  | Method | `jiku-saf` | `jiku-saf-long` | Time (short / long) |
-  |---|---|---|---|
-  | Scenefold, solved timeline | 4.5 / 13.0 | 2.4 / 3.8 | 4.2 / 7.2 s |
-  | Scenefold, raw pair measurement | 3.3 / 42.1 | 2.0 / 5.1 | (same run) |
-  | audio-offset-finder 0.5.5 (MFCC, 16 ms steps) | 7.3 / 50.1 | 3.9 / 11.6 | 17.2 / 30.0 s |
-  | audalign 1.3.1 (correlation; `fine_align` adds nothing) | 14.6 / 29.2 | 10.8 / 18.2 | 8.7 / 11.8 s |
+  | Method | `jiku-saf` (98 errors) | `jiku-saf-long` (187 errors) |
+  |---|---|---|
+  | Scenefold, solved timeline | 8.5 / 25.5, all | 2.1 / 6.4, all |
+  | Scenefold, raw pair measurement | 8.8 / 25.9, all | 2.2 / 15.3, all |
+  | audio-offset-finder 0.5.5 (MFCC, 16 ms steps, no drift) | 10.3 / 61.7, 90 | 6.4 / 30.4, all |
+  | audalign 1.3.1 (correlation, no drift; `fine_align` adds nothing) | 10.5 / 24.0, all | 14.6 / 47.9, 174 |
 
-  No method made a wrong match (> 1 s). On the Nexus S pairs, both baselines land 66–84 ms (median)
-  from the ground truth, like Scenefold. That proves the matching on our WAVs, not the WAVs' time
-  base, so the Nexus S question stays open.
+  No method made a wrong match (> 1 s). Over 80 s the methods are close; over ~3 minutes the lack of
+  drift handling shows. On the Nexus S, both baselines land 68–92 ms (median) from the ground truth,
+  like Scenefold: that proves the matching on our WAVs, not their time base, so it stays open.
 - Findings from real clips:
   - **Nexus S disagrees with the ground truth by 70–110 ms** (16 kHz AAC, edit lists), in both
-    subsets, while its pairs agree with each other and our drift for it differs too (−310 vs −165 ppm
-    in the long subset). Every other phone agrees within a frame. The cause is on one side's audio
-    decoding or timestamps; unresolved. A moment both seen and heard by it and another phone settles it.
-  - **Ingest audio timing (Phase 1):** Galaxy S II audio has ~310 ppm more samples than its container
-    timestamps say. `aresample=async=1` would cut a 100 ms jump into the WAV after ~5 minutes, and
-    picture and sound in its working copy slip ~60 ms per 200 s. Galaxy Nexus's first audio packet
-    jumps 14–19 ms, which the WAV ignores. None of the test clips is long enough to hit the jump.
+    subsets, while its pairs agree with each other. Every other phone agrees within a frame. Its audio
+    timestamps match its samples exactly, so it is not the ingest timing issue below; the cause is
+    in one side's decoding; unresolved. A moment both seen and heard by it and another phone settles it.
+  - **Ingest audio timing (Phase 1), fixed 2026-09-19:** measured frame by frame, Galaxy S II audio
+    holds 314.5 ppm more samples than its timestamps say (smoothly, 0.4 ms jitter), and Galaxy Nexus
+    timestamps jump 14–19 ms after the first audio frame. With `aresample=async=1` the WAV followed
+    the samples, so sound drifted up to 63 ms from its own picture (and would jump 100 ms after ~5
+    min). Now `async=1000` (`ProxySettings.audio_max_stretch`) stretches the sound to follow its
+    timestamps, as the picture does; tested with generated files that mimic both phones. Measured
+    drift now describes each file's timestamp clock (Galaxy S II ≈ −20 ppm against the average,
+    was +136). The ground truth counts samples, so `tools/jiku.py` maps it onto each file's timestamps.
   - **Moving phones:** the lag between two Galaxy Nexus clips stepped by ~15 ms within a minute (a
     phone moving ~5 m, or lost audio). A straight drift line can't follow that (errors up to 26 ms).
     Sound-based sync is limited by path changes: about 3 ms per metre.
@@ -208,8 +218,8 @@ The claps give ground truth for sync error and clock drift.
 - Known limit: identical repeated sound (a recorded chorus played twice) shared by only two clips
   matches the wrong place, and a clip that heard both repeats makes the true pairs ambiguous
   (strict xfail test). Fixing it needs a solver that weighs several candidate lags per pair.
-- Left: home clap recording; ingest audio timing check (all Jiku clips, soft `aresample` compensation);
-  Nexus S visual check.
+- Done 2026-09-19: every "Done when" item is met. The home clap recording and the Nexus S check test
+  picture sync, which the Phase 3 viewer makes easy to see, so they moved there.
 
 ---
 
@@ -226,6 +236,9 @@ The claps give ground truth for sync error and clock drift.
 - Seeking: pause all → seek all → wait until every video reports `seeked` → play together.
 - One audio track at a time, selectable.
 - Sync report page: pair graph, offsets, confidence, rejected pairs.
+- Visual sync checks (carried from Phase 2): the home clap recording with `scenefold evaluate`, and
+  for `jiku-saf-long`, a moment both seen and heard by the Nexus S and another phone, to settle its
+  70–110 ms disagreement with the published ground truth.
 
 **Done when**
 - 4 clips at 720p play in sync on a laptop without a dedicated GPU, drift measured under one frame.

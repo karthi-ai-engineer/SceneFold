@@ -253,7 +253,7 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
     <div class="stage-head">
       <div class="where">src/scenefold/ingest.py · media.py · manifest.py — <code>scenefold ingest</code></div>
       <h2>2. Ingest: make every clip alike</h2>
-      <p>Each file is read, given an ID from its fingerprint, kept untouched, and turned into a working copy: 720p, a steady 30 frames per second, upright, plus a mono 48 kHz sound file. Picture and sound start at the same instant, clip time 0. Problems become warnings, never crashes.</p>
+      <p>Each file is read, given an ID from its fingerprint, kept untouched, and turned into a working copy: 720p, a steady 30 frames per second, upright, plus a mono 48 kHz sound file. Picture and sound start at the same instant, clip time 0, and the sound is gently stretched to follow the file's own timestamps, like the picture: some phones write more sound samples than their timestamps say (a Galaxy S II, 314 ppm). Problems become warnings, never crashes.</p>
     </div>
     <div class="two">
       <div class="panel">
@@ -1046,7 +1046,7 @@ STAGES.event = (() => {
 
 /* ================= 2. ingest ================= */
 STAGES.ingest = (() => {
-  const STEPS = ["Probe", "Clip ID", "Keep original", "Working copy", "Sound file", "Checks"];
+  const STEPS = ["Probe", "Clip ID", "Keep original", "Working copy", "Sound on the file's clock", "Checks"];
   let running = false;
 
   function facts(ph) {
@@ -1083,7 +1083,7 @@ STAGES.ingest = (() => {
     }).join("");
   }
   function manifest(clips) {
-    return { schema_version: 1, event_id: `imaginary-${S.event.seed}`, proxy_settings: { max_short_side: 720, fps: 30, audio_sample_rate: 48000 }, clips };
+    return { schema_version: 1, event_id: `imaginary-${S.event.seed}`, proxy_settings: { max_short_side: 720, fps: 30, audio_sample_rate: 48000, audio_max_stretch: 1000 }, clips };
   }
   async function run() {
     if (running) return;

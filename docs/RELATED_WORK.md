@@ -81,9 +81,10 @@ Pieces exist; the whole chain does not.
 ## What this means for Scenefold
 
 1. **Sync is the foundation, not the novelty.** Our method matches proven research, so measure it
-   honestly against audalign / audio-offset-finder and publish the numbers. First numbers
-   (2026-09-18, two Jiku subsets, see ROADMAP Phase 2): Scenefold median 2.4–4.5 ms, audio-offset-finder
-   3.9–7.3 ms, audalign 10.8–14.6 ms; Scenefold also measures clock drift, which neither baseline does.
+   honestly against audalign / audio-offset-finder and publish the numbers. Numbers so far
+   (2026-09-19, two Jiku subsets, scored at ground-truth moments, see ROADMAP Phase 2): median error
+   Scenefold 2.1–8.5 ms, audio-offset-finder 6.4–10.3 ms, audalign 10.5–14.6 ms. Close over 80 s
+   overlaps; over ~3 minutes Scenefold's drift handling makes the difference (worst 6.4 vs 30–48 ms).
 2. **The novel value is the combination and Layer 2:** a cited account of one event with visible
    disagreements, plus angle choice based on what happens (not who talks), for crowd phone footage.
 3. **AI is weakest exactly there** (~50–63% on cross-video reasoning), which supports our principles:

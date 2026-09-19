@@ -50,9 +50,9 @@ cd SceneFold
 git config user.name "Karthi AI Engineer"
 git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
-git switch phase-2-sync            # current work branch (see "Where things stand")
+git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 201 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 203 passed, 1 xfailed (the known chorus limit)
 ```
 
 - **Clone outside OneDrive/Dropbox.** Windows often syncs Desktop and Documents; footage in `data/` and
@@ -66,42 +66,34 @@ uv run pytest                      # expect 201 passed, 1 xfailed (the known cho
 
 ---
 
-## Where things stand (session 3, 2026-09-17)
+## Where things stand (session 4, 2026-09-19)
 
 | Phase | Status | Where |
 |---|---|---|
 | 0 Foundation | Done | `main` |
-| 1 Ingest | Done; ran on 12 real Jiku phone clips (all ok). Audio timing issue found, see next steps | `main` |
-| 2 Sync | **In progress**: drift-aware sync measured on real clips (Jiku); a few checks left | branch `phase-2-sync` (not merged) |
-| 3–9 | Not started | |
+| 1 Ingest | Done; checked on 12 real Jiku phone clips; sound now follows file timestamps | `main` |
+| 2 Sync | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines | `main` (merged from `phase-2-sync`) |
+| 3 Synced viewer | Next; carries the visual sync checks | start `phase-3-viewer` from `main` |
+| 4–9 | Not started | |
 
-- `main` = `dcaf74e`. `phase-2-sync` is ahead with all sync work, `scenefold evaluate`,
-  `tools/jiku.py`, and docs. Check with `git log --oneline origin/main..origin/phase-2-sync`.
-- Results and findings are in `docs/ROADMAP.md`, Phase 2 "Progress". In short: on two real Jiku
-  subsets, 5 of 6 phones agree with the published ground truth within 4.3 ms (174 s overlaps) and
-  26 ms (80 s overlaps); the Nexus S differs by 70–110 ms, cause unknown.
+- Results and findings: `docs/ROADMAP.md`, Phase 2 "Progress". In short: on two real Jiku subsets,
+  5 of 6 phones agree with the published ground truth within 6.4 ms (174 s overlaps) and 26 ms
+  (80 s overlaps); the Nexus S differs by 70–110 ms, cause unknown (not the ingest timing).
 - Jiku data is local only: `data/_downloads/jiku/` (clips, ground truth XML and JSON), workspaces
   `data/jiku-saf/` and `data/jiku-saf-long/`. On a new machine, `uv run python tools/jiku.py jiku-saf`
-  fetches it again (786 MB; `jiku-saf-long` is 1.54 GB).
+  fetches it again (786 MB; `jiku-saf-long` is 1.54 GB), then ingest, sync, evaluate.
 
 ### Next steps, in order
 
-1. **Home clap recording (Karthi).** ~1 minute, 2–3 phones at once, a visible, sharp clap at the start
-   and the end, some walking. Then `scenefold ingest`, `sync`, and `evaluate` with the clap times
-   (README "Checking sync with claps"). First check of visual (not just audio) sync.
-2. **Ingest audio timing (Phase 1 fix, on this branch).** For every Jiku clip compare the WAV's sample
-   count with the audio container timestamps. Galaxy S II runs ~310 ppm ahead, so
-   `aresample=async=1` cuts a 100 ms jump after ~5 min, and picture and sound slip ~60 ms per 200 s.
-   Try soft compensation (`aresample=async=<N>`, which stretches smoothly) while keeping the flash and
-   click tests within 5 ms; decide which clock a working copy follows. This may also explain the
-   Nexus S difference.
-3. **Nexus S check.** If step 2 doesn't explain it, find a moment seen and heard by the Nexus S and
-   another phone in `jiku-saf-long`, and see which placement is right.
-4. ~~Baselines~~ **Done (session 3):** Scenefold is more accurate than audio-offset-finder and audalign
-   on both Jiku subsets (ROADMAP Phase 2); `tools/baselines.py`.
-5. Then PR `phase-2-sync` → `main`, fast-forward merge once CI is green, delete the branch.
-6. **Phase 3, synced viewer** → first demo `v0.1.0`. Use `1 + drift_ppm/1e6` as each clip's rate.
-7. Later (not Phase 2): a solver that weighs several candidate lags per pair would fix the repeated
+1. **Phase 3, synced viewer** on a new branch `phase-3-viewer` from `main` → first demo `v0.1.0`
+   (ROADMAP Phase 3). Use `1 + drift_ppm/1e6` as each clip's playback rate. Add its section to
+   `docs/simulation.html`.
+2. **Home clap recording (Karthi).** ~1 minute, 2–3 phones at once, a visible, sharp clap at the start
+   and the end, some walking. Then `scenefold ingest`, `sync`, `evaluate` with the clap times (README
+   "Checking sync with claps"), and look at it in the viewer: first check of picture sync.
+3. **Nexus S check** in the viewer: a moment both seen and heard by the Nexus S and another phone in
+   `jiku-saf-long` shows which placement is right.
+4. Later (not Phase 3): a solver that weighs several candidate lags per pair would fix the repeated
    chorus case (strict xfail test in `tests/test_sync.py`).
 
 ### Open questions / decisions still pending
@@ -223,3 +215,20 @@ uv run pytest                      # expect 201 passed, 1 xfailed (the known cho
    via uv, no install hacks): Scenefold was most accurate on both subsets. The baselines also put the
    Nexus S ~80 ms from the ground truth; since every method read our WAVs, that still leaves the WAV
    time base (next step 2) as the open question.
+7. Built `docs/simulation.html`, an animated walk-through of the built steps on imaginary data, and
+   published it as a private artifact. Rule added: extend it whenever a step lands.
+
+### Session 4: 2026-09-19, Acer Predator
+
+1. No new footage yet, so worked on ingest audio timing. Measured every Jiku clip frame by frame:
+   Galaxy S II audio holds 314.5 ppm more samples than its timestamps; Galaxy Nexus timestamps jump
+   14–19 ms after the first frame; Nexus S timestamps are exact (so its 70–110 ms mystery is elsewhere).
+2. Wrote a failing test first (generated files that mimic both phones), then made the WAV follow the
+   timestamps like the picture: `aresample=async=1000` via `ProxySettings.audio_max_stretch` (a new
+   setting, so old working copies rebuild). 203 tests pass.
+3. The Jiku ground truth counts samples, so `tools/jiku.py` now maps it onto each file's timestamps;
+   `tools/baselines.py` now scores at the same moments as `scenefold evaluate` (its old per-pair
+   start lag was thrown off by the 16 ms first-frame jump). Re-ran everything: accuracy held; over ~3
+   minutes Scenefold beats both baselines, over 80 s they are close.
+4. Closed Phase 2 (Done-when met); the clap and Nexus S checks moved to Phase 3. PR and fast-forward
+   merge into `main`.

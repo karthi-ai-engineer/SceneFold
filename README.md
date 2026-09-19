@@ -22,7 +22,8 @@ phases add a cited story of the event, where the cameras disagree, and an automa
 
 - Keeps an untouched, read-only copy of every original.
 - Makes a working copy of each video: 720p, a steady 30 fps, upright, HDR converted to normal colors,
-  plus a mono 48 kHz WAV of its sound. Picture and sound start at exactly the same instant.
+  plus a mono 48 kHz WAV of its sound. Picture and sound start at exactly the same instant and stay
+  together, even on phones whose sound clock disagrees with the file's timestamps.
 - Records each clip in `manifest.json` as `ok`, `warning` (for example no audio, very short, or a
   cut-off file) or `failed`, always with the reason.
 - Skips files that are not videos and videos it has already processed. One bad file never stops the rest.
@@ -49,11 +50,12 @@ speech recognition is involved: music, claps, cheering, and background talk all 
 
 **Measured accuracy.** On real phone clips of a live event from the
 [Jiku dataset](https://traces.cs.umass.edu/docs/traces/multimedia/), sync agrees with its published
-ground truth within 4.3 ms when the clips overlap for about three minutes, and within 26 ms for
+ground truth within 6.4 ms when the clips overlap for about three minutes, and within 26 ms for
 80-second overlaps, for five of six phones. The sixth (a Nexus S) differs by 70–110 ms; which side is
-right is not settled yet. On the same clips it was more accurate than
+right is not settled yet. On the same clips it matched
 [audio-offset-finder](https://github.com/bbc/audio-offset-finder) and
-[audalign](https://github.com/benfmiller/audalign) (`tools/baselines.py`).
+[audalign](https://github.com/benfmiller/audalign) over 80 seconds and beat both over three minutes,
+where their lack of clock-drift handling shows (`tools/baselines.py`).
 
 **Known limits.** Sound that repeats exactly, like the same recorded song played twice, can match
 the wrong place when only two clips share it. A phone that moves while filming shifts its sound by
