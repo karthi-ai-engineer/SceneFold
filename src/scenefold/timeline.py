@@ -13,10 +13,10 @@ ppm of its sound, but not on every device. The two times convert as:
 A player can use `1 + drift_ppm / 1e6` directly as the clip's playback rate.
 
 Offsets come from the sound, so they line up the moment each phone *heard* the event. Sound needs
-about 2.9 ms to travel a metre, so a phone further from the stage has its picture placed late by
-its extra distance. Where the pictures allow it (see picture_offset.py), each clip also gets a
-`heard_late_s`: how much later than the nearest clip this one heard the event. Add it to line the
-pictures up instead:
+about 2.9 ms to travel a metre, so a phone further from the stage ends up with its picture ahead of
+everybody else's by its extra distance: its flash comes first on the shared clock. Where the
+pictures allow it (see picture_offset.py), each clip also gets a `heard_late_s`: how much later
+than the nearest clip this one heard the event. Add it to line the pictures up instead:
 
     t_master of this clip's pictures = offset_s + heard_late_s + t_local / (1 + drift_ppm / 1e6)
 

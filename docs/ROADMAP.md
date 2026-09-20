@@ -12,7 +12,7 @@ Last updated: 2026-09-20
 | 0 | Foundation | — | 1 | Done |
 | 1 | Ingest | 1 | 1 | Done; checked on 12 real phone clips (sound now follows the file timestamps) |
 | 2 | Sync | 2 | 1–2 | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines |
-| 2b | Place the pictures, not the sound arrival | 2 | ~1 | In progress: measured in sync; viewer left |
+| 2b | Place the pictures, not the sound arrival | 2 | ~1 | Done: measured in sync, and the viewer can hold the pictures together |
 | 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Done: viewer within half a frame, checked on the pictures too, demo event and README GIF |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Not started |
 | 5 | Clip understanding | 4 | 2 | Not started |
@@ -255,7 +255,9 @@ measuring is now part of sync itself, in `src/scenefold/picture_offset.py`:
   rest by more than 60 ms, exactly as the sound solver does. `timeline.json` gains `heard_late_s`
   per clip and the picture measurement on every pair (`schema_version` 2).
 - `scenefold sync` prints it as a distance; `--sound-only` skips the pass, which has to read every
-  picture. The viewer can line up the pictures instead of the sound.
+  picture. The viewer's "Line up" control holds the pictures together (the default when any clip
+  knows its distance) or the sound, and the sync report shows the distances and every picture
+  match.
 
 **Measured.** On drawn clips whose true distances are known, the delays come back within a frame,
 and where the truth is zero it reads within 17 ms (half a frame). On the two Coldplay nights it
@@ -344,7 +346,7 @@ the timeline, drift, and viewer chain is right — and the spread is one number 
 That is the speed of sound: 2.9 ms per metre, so these phones stood 0–91 m and 0–145 m apart in
 their distance from the speakers — ordinary for a stadium holding 130,000 people. **Sound-based sync
 lines up when each phone *heard* the event, not when it happened.** Any phone further from the
-speakers has its picture placed late by its distance, up to 12 frames here. (Delay towers and an
+speakers has its picture placed ahead of the others by its distance, up to 12 frames here. (Delay towers and an
 uploader's own audio shift would look the same; the per-clip fit only shows it is one number per
 clip.) Aligning pictures instead is the first item after Phase 3.
 

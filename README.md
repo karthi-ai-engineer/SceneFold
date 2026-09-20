@@ -69,10 +69,11 @@ where their lack of clock-drift handling shows (`tools/baselines.py`).
 
 **Sound takes time to arrive, so the pictures are matched too.** Sound travels about one metre
 every 2.9 ms, so a phone further from the speakers hears everything late — and sync, which listens,
-places its picture late by exactly that much. At a stadium concert the phones were up to 423 ms
-apart in when they heard the music: twelve frames of visible mismatch. So the placed clips are
-matched a second time by how their brightness changes (stage lighting, flashes), which gives each
-clip a `heard_late_s`: how much later than the nearest clip that phone heard the event.
+ends up putting its picture ahead of everybody else's by exactly that much: its flash comes first
+on the shared clock. At a stadium concert the phones were up to 423 ms apart in when they heard the
+music, twelve frames of visible mismatch. So the placed clips are matched a second time by how
+their brightness changes (stage lighting, flashes), which gives each clip a `heard_late_s`: how
+much later than the nearest clip that phone heard the event.
 
 - `scenefold sync` reports it as a distance, and the viewer can line up the pictures instead of the
   sound — what you want when watching several angles at once.

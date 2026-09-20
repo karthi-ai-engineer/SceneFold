@@ -332,3 +332,20 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
     in the sync report). One open question: `scenefold evaluate` compares clips at ground-truth
     moments using the sound alignment. Moments found by stepping through pictures (a flash) would
     want the picture alignment instead, so evaluate may need to say which it is using.
+12. **The viewer can line up pictures or sound** (`web/sync.js` takes an alignment; `app.js` binds
+    it in one place so no conversion can be left on the other one). The transport bar has
+    "Line up · Pictures / Sound heard", defaulting to pictures when any clip knows its distance and
+    disabled with an explanation when none does. Switching re-seeks every video through the normal
+    path. The sync report gained "Heard late" and "Further away" per clip, a "Furthest from the
+    sound" tile, and the picture measurement columns per pair. 15 timing tests (was 11).
+13. **A bug worth remembering, found by reviewing the agent's report, not by a test:** the picture
+    measurements were written into each pair row in the loop's (a, b) order, while the row itself
+    may hold (b, a) — the placed clips are ordered longest first, the rows in manifest order. Four
+    of ten `coldplay-jan26` rows stored the reversed answer (sound lag −81.132 s next to picture
+    lag +81.093 s). Per-clip distances were never affected. Fixed by measuring each pair the way
+    its own row reads, and `tests/test_picture_sync.py` now checks every row's two answers agree.
+14. **`tools/check_viewer.py` needs a quiet machine.** It failed repeatedly today on the 5- and
+    6-clip real events (p95 45 ms during playback, a 140 ms jump) with ~22 of Karthi's own Chrome
+    processes running, and passed on the 4-clip demo. It fails the same way in sound alignment and
+    on `jiku-saf-long`, which has no distances at all, so it is decoding starved of CPU, not a
+    regression. Re-run it on an idle machine before trusting a red result.

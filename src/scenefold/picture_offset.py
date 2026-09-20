@@ -1,11 +1,11 @@
 """Measure how far apart two clips are from their pictures, and how far each phone stood away.
 
 Sync listens, so it lines up the moment each phone *heard* the event. Sound needs about 2.9 ms to
-travel a metre, so a phone further from the speakers has its picture placed late by its extra
-distance: 423 ms, twelve frames, across one stadium concert. This module reads how bright each
-working copy is frame by frame (stage lighting, flashes), matches those curves around where the
-sound put each pair, and turns the differences into one number per clip: how much later than the
-nearest phone it heard the event.
+travel a metre, so a phone further from the speakers ends up with its picture ahead of everybody
+else's by its extra distance: its flash comes first on the shared clock, by 423 ms across one
+stadium concert. This module reads how bright each working copy is frame by frame (stage lighting,
+flashes), matches those curves around where the sound put each pair, and turns the differences into
+one number per clip: how much later than the nearest phone it heard the event.
 
     t_master of this clip's pictures = offset_s + heard_late_s + t_local / (1 + drift_ppm / 1e6)
 
