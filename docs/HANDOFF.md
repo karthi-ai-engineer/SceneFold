@@ -74,8 +74,9 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 | 0 Foundation | Done | `main` |
 | 1 Ingest | Done; checked on 12 real Jiku phone clips; sound now follows file timestamps | `main` |
 | 2 Sync | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines | `main` (merged from `phase-2-sync`) |
-| 3 Synced viewer | **In progress**: `scenefold view` works; every picture within half a frame, and the placement checked on the pictures alone | branch `phase-3-viewer` (not merged) |
-| 4–9 | Not started | |
+| 3 Synced viewer | Done, **v0.1.0**: `scenefold view`, every picture within half a frame, the placement checked on the pictures alone, demo event and README GIF | `main` (merged from `phase-3-viewer`) |
+| 4 Quality cut | **Next**, but see step 2 below: placing pictures instead of sound arrival comes first | not started |
+| 5–9 | Not started | |
 
 - Results and findings: `docs/ROADMAP.md`, Phase 2 "Progress". In short: on two real Jiku subsets,
   5 of 6 phones agree with the published ground truth within 6.4 ms (174 s overlaps) and 26 ms
@@ -93,16 +94,13 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 
 ### Next steps, in order
 
-1. **Finish Phase 3** on `phase-3-viewer` (ROADMAP Phase 3 "Progress" lists what is done):
-   - Tag `v0.1.0`, then PR `phase-3-viewer` → `main`, fast-forward merge once CI is green.
-   - Done in session 6: the README GIF (`docs/viewer.gif`), from a drawn event with nobody in it
-     (`tools/demo_event.py`, recorded by `tools/record_viewer.py`). `uv run python
-     tools/demo_event.py` rebuilds it anywhere in about two minutes.
-   - Done in session 6: the laptop-without-GPU item was dropped (that laptop is gone, and the viewer
-     decodes in software anyway), and the picture check replaced the home clap recording.
-     The Nexus S check failed for want of a signal: Jiku's lighting is steady, so no pair's
-     brightness matched clearly. It stays open; it would need a visible, audible moment (a hit or a
-     light cue) found by hand in `jiku-saf-long`.
+1. ~~Finish Phase 3~~ **Done (session 6):** tagged `v0.1.0` and merged into `main`. The README GIF
+   comes from a drawn event with nobody in it (`tools/demo_event.py`, recorded by
+   `tools/record_viewer.py`); `uv run python tools/demo_event.py` rebuilds it anywhere in about two
+   minutes. The laptop-without-GPU item was dropped (that laptop is gone, and the viewer decodes in
+   software anyway), and the picture check replaced the home clap recording. The Nexus S check
+   failed for want of a signal: Jiku's lighting is steady, so no pair's brightness matched clearly.
+   It stays open; it would need a visible, audible moment (a hit or a light cue) found by hand.
 2. **Then: place the pictures, not the sound arrival** (ROADMAP Phase 2, "Next in sync"). The
    picture check found phones up to 423 ms apart in when they heard the same stadium show, which is
    how far they stood from the speakers (2.9 ms per metre). `tools/check_pictures.py` already
