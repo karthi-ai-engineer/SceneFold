@@ -219,10 +219,14 @@ def measure_pictures(
             curves[clip_id] = picture_offset.load_brightness(event_dir / clips[clip_id].proxy.video)
         except (media.ProxyError, media.MediaToolsError, OSError):
             continue  # one unreadable clip must not stop the others
-    rows = {(p.clip_a, p.clip_b): p for p in solution.pairs}
     differences: list[tuple[str, str, float, float]] = []
     order: list[PairMeasurement] = []
-    for a, b in combinations([c for c in placed if c in curves], 2):
+    # Each pair is measured the way its own row reads, A then B, so the two answers for a pair
+    # (what its sound says, what its pictures say) always describe the same direction.
+    for row in solution.pairs:
+        a, b = row.clip_a, row.clip_b
+        if a not in curves or b not in curves:
+            continue
         rate_a = 1 + (solution.drift_ppm.get(a) or 0.0) * 1e-6
         sound_lag = (solution.offsets[b] - solution.offsets[a]) * rate_a  # on A's clock
         found = picture_offset.match_pictures(
@@ -233,8 +237,7 @@ def measure_pictures(
             min_overlap_s=settings.min_overlap_s,
             drift_ppm=(solution.drift_ppm.get(b) or 0.0) - (solution.drift_ppm.get(a) or 0.0),
         )
-        row = rows.get((a, b)) or rows.get((b, a))
-        if found is None or row is None:
+        if found is None:
             continue
         difference = (found.lag_s - sound_lag) / rate_a  # master seconds
         row.picture_lag_s = round(found.lag_s, 6)

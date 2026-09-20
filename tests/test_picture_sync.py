@@ -73,16 +73,21 @@ def lit_event(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def steady_event(tmp_path_factory):
-    steady = np.full(int(SHOW_S * FPS), 120.0)
-    return build_event(tmp_path_factory.mktemp("steady"), steady)
+def lit(lit_event):
+    """Synced once: reading the pictures of every clip is the slow part."""
+    return sync_event("light-show", data_dir=lit_event)
+
+
+@pytest.fixture(scope="module")
+def steady(tmp_path_factory):
+    steady_light = np.full(int(SHOW_S * FPS), 120.0)
+    event = build_event(tmp_path_factory.mktemp("steady"), steady_light)
+    return sync_event("light-show", data_dir=event)
 
 
 @needs_ffmpeg
-def test_how_late_each_phone_heard_the_event_is_measured(lit_event):
-    timeline = sync_event("light-show", data_dir=lit_event)
-
-    placed = {c.name: c for c in timeline.clips if c.placed}
+def test_how_late_each_phone_heard_the_event_is_measured(lit):
+    placed = {c.name: c for c in lit.clips if c.placed}
     assert set(placed) == set(PHONES)
     nearest = min(LATE_S.values())
     for name, late in LATE_S.items():
@@ -90,11 +95,9 @@ def test_how_late_each_phone_heard_the_event_is_measured(lit_event):
 
 
 @needs_ffmpeg
-def test_the_offsets_still_line_up_the_sound(lit_event):
+def test_the_offsets_still_line_up_the_sound(lit):
     """Sound alignment is unchanged; adding heard_late_s lines the pictures up instead."""
-    timeline = sync_event("light-show", data_dir=lit_event)
-
-    placed = {c.name: c for c in timeline.clips if c.placed}
+    placed = {c.name: c for c in lit.clips if c.placed}
     first = min(placed.values(), key=lambda c: c.offset_s)
     heard_first = PHONES[first.name][0] - LATE_S[first.name]
     for name, (start, _, _) in PHONES.items():
@@ -105,26 +108,26 @@ def test_the_offsets_still_line_up_the_sound(lit_event):
 
 
 @needs_ffmpeg
-def test_every_picture_match_is_written_down(lit_event):
-    timeline = sync_event("light-show", data_dir=lit_event)
-
-    matched = [p for p in timeline.pairs if p.picture_lag_s is not None]
+def test_every_picture_match_is_written_down(lit):
+    matched = [p for p in lit.pairs if p.picture_lag_s is not None]
     assert len(matched) == 3  # every pair of the three clips
+    late = {c.clip_id: c.heard_late_s for c in lit.clips if c.placed}
     for pair in matched:
         assert pair.picture_clearness > 4
         assert pair.picture_used
-        assert abs(pair.picture_difference_ms) < 500  # the distances here are under 150 m
+        # each row's two answers must describe the same direction: A then B, as the row reads
+        assert pair.picture_lag_s == pytest.approx(pair.lag_s, abs=0.5)
+        wanted = (late[pair.clip_b] - late[pair.clip_a]) * 1000
+        assert pair.picture_difference_ms == pytest.approx(wanted, abs=FRAME_S * 1000)
 
 
 @needs_ffmpeg
-def test_steady_light_says_it_cannot_tell(steady_event):
+def test_steady_light_says_it_cannot_tell(steady):
     """A steadily lit room gives no answer, and that is reported rather than guessed."""
-    timeline = sync_event("light-show", data_dir=steady_event)
-
-    placed = [c for c in timeline.clips if c.placed]
+    placed = [c for c in steady.clips if c.placed]
     assert len(placed) == 3  # the sound still places them
     assert all(c.heard_late_s is None for c in placed)
-    assert not any(p.picture_used for p in timeline.pairs)
+    assert not any(p.picture_used for p in steady.pairs)
 
 
 @needs_ffmpeg
