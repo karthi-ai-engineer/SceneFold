@@ -13,6 +13,7 @@ import numpy as np
 from scipy import ndimage
 
 RATE = 48_000
+SOUND_M_PER_S = 343.0
 
 
 def scene(seconds: float, seed: int = 0, rate: int = RATE) -> np.ndarray:
@@ -75,22 +76,26 @@ class Phone:
     echo: float = 0.0  # 0 = dry room; 0.5 = strong reflections
     seed: int = 1
     drift_ppm: float = 0.0  # how much faster the phone's clock runs than scene time
+    distance_m: float = 0.0  # how far from the sound it stands; its sound arrives 2.9 ms/m late
 
 
 def record(signal: np.ndarray, phone: Phone, rate: int = RATE) -> np.ndarray:
     """What one phone hears: a window of the scene with its own gain, noise, echo, and clock.
 
-    Phone time t_local shows scene time start_s + t_local / (1 + drift_ppm / 1e6).
+    Phone time t_local shows scene time start_s + t_local / (1 + drift_ppm / 1e6). Sound from
+    `distance_m` away arrives that much later, so at phone time 0 it hears an earlier moment than
+    it sees: this is why sync, which listens, places a distant phone's picture late.
     """
     rng = np.random.default_rng(phone.seed)
     count = int(phone.seconds * rate)
+    start_s = phone.start_s - phone.distance_m / SOUND_M_PER_S
     if phone.drift_ppm:
-        positions = phone.start_s * rate + np.arange(count) / (1 + phone.drift_ppm * 1e-6)
+        positions = start_s * rate + np.arange(count) / (1 + phone.drift_ppm * 1e-6)
         first = max(0, int(positions[0]) - 4)
         piece = signal[first : int(positions[-1]) + 5].astype(np.float64)
         clip = ndimage.map_coordinates(piece, [positions - first], order=3, mode="nearest")
     else:
-        start = int(round(phone.start_s * rate))
+        start = int(round(start_s * rate))
         clip = signal[start : start + count].astype(np.float64)
     clip *= phone.gain
     if phone.echo:
@@ -113,3 +118,37 @@ def write_wav(path: Path, samples: np.ndarray, rate: int = RATE) -> Path:
         wav.setframerate(rate)
         wav.writeframes(data)
     return path
+
+
+def lighting(seconds: float, seed: int = 0, fps: float = 30.0) -> np.ndarray:
+    """Stage lighting as a brightness curve: many pulses at unrelated speeds, never repeating.
+
+    This is what a clip's picture gives sync (see picture_offset.py). Lighting on a regular beat
+    would match at every beat, and single-frame flicker does not survive video encoding, so the
+    pulses are irregular and none of them is fast.
+    """
+    rng = np.random.default_rng(seed)
+    times = np.arange(int(seconds * fps)) / fps
+    speeds = rng.uniform(0.4, 5.0, 14)
+    curve = np.zeros_like(times)
+    for speed, phase in zip(speeds, rng.uniform(0, 2 * np.pi, 14), strict=True):
+        curve += 0.10 / np.sqrt(speed) * np.sin(2 * np.pi * speed * times + phase)
+    return 128 + 90 * curve  # around the middle of an 8-bit grey scale, as a real picture is
+
+
+def filmed(
+    curve: np.ndarray,
+    phone: Phone,
+    fps: float = 30.0,
+    noise: float = 0.5,
+) -> np.ndarray:
+    """The part of a lighting curve one phone recorded, on its own clock, with sensor noise.
+
+    Phone time t_local shows scene time start_s + t_local / (1 + drift_ppm / 1e6), exactly as
+    `record` does for sound.
+    """
+    rng = np.random.default_rng(phone.seed + 5)
+    count = int(phone.seconds * fps)
+    times = phone.start_s + np.arange(count) / (fps * (1 + phone.drift_ppm * 1e-6))
+    seen = np.interp(times, np.arange(len(curve)) / fps, curve)
+    return seen + rng.standard_normal(count) * noise

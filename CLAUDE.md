@@ -30,6 +30,7 @@ uv run pytest                             # all tests (generates tiny test video
 uv run ruff format src tests tools && uv run ruff check src tests tools
 uv run scenefold ingest <event> <videos or folders>   # writes data/<event>/
 uv run scenefold sync <event>                         # writes data/<event>/timeline.json
+uv run scenefold sync <event> --sound-only            # skip the picture pass (distance), faster
 uv run scenefold evaluate <event> <truth.json>        # sync error against ground truth moments
 uv run scenefold view <event>                         # the synced viewer at http://127.0.0.1:8765
 node --test web/tests/sync.test.mjs                   # the viewer's timing rules (Node 18+)

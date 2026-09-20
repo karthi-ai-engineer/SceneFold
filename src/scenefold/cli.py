@@ -9,8 +9,9 @@ from pathlib import Path
 
 from scenefold.evaluate import FRAME_S, EvaluationError, evaluate_event
 from scenefold.ingest import IngestError, InputResult, Outcome, ingest
+from scenefold.picture_offset import metres
 from scenefold.sync import SyncError, sync_event
-from scenefold.timeline import TIMELINE_NAME, Timeline
+from scenefold.timeline import TIMELINE_NAME, ClipPlacement, Timeline
 from scenefold.view import DEFAULT_PORT, ViewError, serve
 
 SUMMARY_ORDER = [
@@ -59,6 +60,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         default=Path("data"),
         help="folder that holds event workspaces (default: ./data)",
+    )
+    sync_parser.add_argument(
+        "--sound-only",
+        action="store_true",
+        help="skip matching the pictures, which measures how far each phone stood from the sound; "
+        "faster, because the pictures have to be read",
     )
     evaluate_parser = commands.add_parser(
         "evaluate",
@@ -129,7 +136,12 @@ def _run_ingest(args: argparse.Namespace) -> int:
 
 def _run_sync(args: argparse.Namespace) -> int:
     try:
-        timeline = sync_event(args.event, data_dir=args.data_dir)
+        timeline = sync_event(
+            args.event,
+            data_dir=args.data_dir,
+            pictures=not args.sound_only,
+            progress=_print_step,
+        )
     except SyncError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -160,6 +172,22 @@ def _print_timeline(timeline: Timeline) -> None:
     parts = [f"{len(timeline.pairs)} measured", f"{sum(p.used for p in timeline.pairs)} used"]
     parts += [f"{count} {reason}" for reason, count in sorted(rejected.items())]
     print(f"Pairs: {', '.join(parts)}")
+    _print_distances(timeline, placed, width)
+
+
+def _print_distances(timeline: Timeline, placed: list[ClipPlacement], width: int) -> None:
+    """How far each phone stood from the sound, when the pictures could tell."""
+    known = [c for c in placed if c.heard_late_s is not None]
+    if not known:
+        if any(p.picture_lag_s is not None for p in timeline.pairs):
+            print("Distance: the pictures never matched clearly enough to tell (steady light?)")
+        return
+    print(f"Sound travel, from the pictures ({len(known)} of {len(placed)} clips):")
+    for clip in sorted(known, key=lambda c: c.heard_late_s):
+        late_ms = clip.heard_late_s * 1000
+        away = metres(clip.heard_late_s)
+        print(f"  {clip.name:<{width}}  heard it {late_ms:+7.0f} ms late, about {away:4.0f} m away")
+    print("  (counted from the nearest clip; add it to a clip's offset to line up the pictures)")
 
 
 def _run_evaluate(args: argparse.Namespace) -> int:
@@ -199,6 +227,10 @@ def _run_view(args: argparse.Namespace) -> int:
         pass  # Ctrl+C before the server was answering; stopping is still the normal end
     print("stopped")
     return 0
+
+
+def _print_step(message: str) -> None:
+    print(f"  {message}", flush=True)
 
 
 def _print_progress(number: int, total: int, path: Path, result: InputResult | None) -> None:

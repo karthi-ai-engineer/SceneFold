@@ -11,6 +11,16 @@ ppm of its sound, but not on every device. The two times convert as:
     t_master = offset_s + t_local / (1 + drift_ppm / 1e6)
 
 A player can use `1 + drift_ppm / 1e6` directly as the clip's playback rate.
+
+Offsets come from the sound, so they line up the moment each phone *heard* the event. Sound needs
+about 2.9 ms to travel a metre, so a phone further from the stage has its picture placed late by
+its extra distance. Where the pictures allow it (see picture_offset.py), each clip also gets a
+`heard_late_s`: how much later than the nearest clip this one heard the event. Add it to line the
+pictures up instead:
+
+    t_master of this clip's pictures = offset_s + heard_late_s + t_local / (1 + drift_ppm / 1e6)
+
+Use the sound alignment when listening to one clip, the picture alignment when watching several.
 """
 
 import json
@@ -20,7 +30,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2 added heard_late_s and the picture measurements; version 1 files still load
 TIMELINE_NAME = "timeline.json"
 
 
@@ -45,6 +55,13 @@ class SyncSettings(BaseModel):
     # ...when its overlap holds at least this many windows. Short clips count too: a 32 s clip whose
     # windows agreed 1 of 3 and 0 of 3 linked the two Coldplay nights when left unjudged.
     agreement_windows: int = Field(2, ge=1)
+    # Pictures: how far either side of the sound's answer the brightness curves are matched, how
+    # clearly a match must stand above far-away lags to be believed (measured: 4.6-7.4 on real
+    # concert clips, at most 2.9 where the lighting is steady), and how far a pair may sit from
+    # one delay per clip before it is dropped (measured: at most 50 ms on real concerts).
+    picture_search_s: float = Field(2.0, gt=0)
+    min_clearness: float = Field(4.0, gt=0)
+    max_picture_residual_ms: float = Field(60.0, gt=0)
 
 
 class PairMeasurement(BaseModel):
@@ -62,6 +79,11 @@ class PairMeasurement(BaseModel):
     # short_overlap, low_confidence, partial_match, inconsistent, or separate_group
     rejected: str | None = None
     residual_ms: float | None = None  # disagreement with the solved offsets
+    # The same pair matched on its pictures alone, when the light allowed it (picture_offset.py)
+    picture_lag_s: float | None = None  # on A's clock, where B's time 0 sits by the pictures
+    picture_clearness: float | None = None  # how far the match stands above far-away lags
+    picture_difference_ms: float | None = None  # how much later than the sound the pictures put B
+    picture_used: bool = False  # True when this difference fed the clips' heard_late_s
 
 
 class ClipPlacement(BaseModel):
@@ -72,6 +94,9 @@ class ClipPlacement(BaseModel):
     drift_ppm: float | None = None  # how much faster this clip's clock ran than the master clock
     duration_s: float
     confidence: float | None = None  # best confidence among the pairs that placed it
+    # How much later than the nearest clip this one heard the event, from the pictures (None: the
+    # light never changed enough to tell). Add it to offset_s to line up pictures instead of sound.
+    heard_late_s: float | None = None
     reason: str | None = None  # why it could not be placed
 
 

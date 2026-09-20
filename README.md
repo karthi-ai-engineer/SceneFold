@@ -52,8 +52,11 @@ speech recognition is involved: music, claps, cheering, and background talk all 
   fast or slow, which adds up to tens of milliseconds over a few minutes.
 - Solves all pairs together and drops pairs that disagree with the rest, so one bad match can't
   move the other clips. Clips that never overlap are placed through the clips between them.
-- Writes `timeline.json` with each clip's offset, drift, and confidence, every pair measurement, and
-  the reason for any clip it could not place. A clip is never forced onto the timeline.
+- Matches the placed clips again by their pictures, which says how far each phone stood from the
+  sound (below). Skip it with `--sound-only`; it is the slow part, because it reads every picture.
+- Writes `timeline.json` with each clip's offset, drift, confidence and distance, every pair
+  measurement, and the reason for any clip it could not place. A clip is never forced onto the
+  timeline.
 
 **Measured accuracy.** On real phone clips of a live event from the
 [Jiku dataset](https://traces.cs.umass.edu/docs/traces/multimedia/), sync agrees with its published
@@ -64,15 +67,18 @@ right is not settled yet. On the same clips it matched
 [audalign](https://github.com/benfmiller/audalign) over 80 seconds and beat both over three minutes,
 where their lack of clock-drift handling shows (`tools/baselines.py`).
 
-**Checked on the pictures, too.** `tools/check_pictures.py` ignores sound: it matches the clips by
-how their brightness changes (stage lighting, flashes) and compares that with where sound placed
-them. On two stadium concerts, giving each clip a single delay explains every pair to within 15 ms
-and 50 ms, so the placement itself is accurate to about a third of a frame.
+**Sound takes time to arrive, so the pictures are matched too.** Sound travels about one metre
+every 2.9 ms, so a phone further from the speakers hears everything late — and sync, which listens,
+places its picture late by exactly that much. At a stadium concert the phones were up to 423 ms
+apart in when they heard the music: twelve frames of visible mismatch. So the placed clips are
+matched a second time by how their brightness changes (stage lighting, flashes), which gives each
+clip a `heard_late_s`: how much later than the nearest clip that phone heard the event.
 
-**Sound takes time to arrive.** Those per-clip delays are real: at a stadium show the phones were
-up to 423 ms apart in *when they heard* the music, which is 2.9 ms per metre of distance from the
-speakers. Sync lines up what each phone heard, so a phone standing further back has its picture
-placed that late — up to 12 frames. Aligning the pictures instead is the next piece of work.
+- `scenefold sync` reports it as a distance, and the viewer can line up the pictures instead of the
+  sound — what you want when watching several angles at once.
+- It needs light that changes together. Where the lighting is steady it says it cannot tell instead
+  of guessing, and a match is only believed when it stands clear of matches at unrelated times.
+- Accuracy: on drawn clips where the true answer is zero it reads within 17 ms, half a frame.
 
 **Different nights, same song.** Bands play along to backing tracks that are identical every night,
 so clips of the same song from two shows can match on the music alone. Sync checks that a match
@@ -82,9 +88,8 @@ largest group is placed for now.
 
 **Known limits.** Sound that repeats exactly, like the same recorded song played twice, can match
 the wrong place when only two clips share it. A phone that moves while filming shifts its sound by
-about 3 ms per metre, and phones at different distances are placed by when they heard the event
-rather than when it happened. Edited uploads (with cuts) can't be placed as one clip. Clips without usable
-sound can't be placed yet.
+about 3 ms per metre, and one distance per clip cannot follow it. Edited uploads (with cuts) can't
+be placed as one clip. Clips without usable sound can't be placed yet.
 
 `scenefold evaluate <event> <truth.json>` measures sync error against ground truth: moments such as
 claps, with their time in each clip that caught them.
@@ -200,9 +205,12 @@ moment say when they start or that they stopped.
 - **Space** plays or pauses; **←/→** jump 5 seconds; **, and .** step one frame; **1–9** pick whose
   sound you hear. Click or drag the lanes under the videos to jump anywhere. 0.25× and 0.5× help
   when checking a clap frame by frame.
+- **Line up** chooses what the shared clock holds together: the **pictures** (what you want when
+  watching several angles, since a distant phone heard the event late) or the **sound heard**.
 - **Sync health** shows, for every frame each video shows, how far it is from where the clock wants
   it. On real phone clips it stays within half a frame; one frame at 30 fps is 33 ms.
-- **Sync report** shows which clips were placed, every pair measurement, and why any was set aside.
+- **Sync report** shows which clips were placed, how far each phone stood from the sound, every
+  pair measurement, and why any was set aside.
 
 The clock follows the clip you are listening to, so its sound is never sped up or slowed down; the
 other videos are nudged a little faster or slower to stay with it.
@@ -215,7 +223,6 @@ uv run ruff format src tests tools
 uv run ruff check src tests tools
 node --test web/tests/sync.test.mjs                               # the viewer's timing rules
 uv run --with playwright python tools/check_viewer.py my-event   # viewer sync, in headless Chrome
-uv run python tools/check_pictures.py my-event                   # sync checked on the pictures alone
 uv run python tools/demo_event.py                                # an imaginary event, nobody filmed
 uv run --with playwright python tools/record_viewer.py demo      # the GIF above
 ```
@@ -232,7 +239,8 @@ git config core.hooksPath .githooks
 
 ```
 src/scenefold/   pipeline code: cli, ingest, media (FFmpeg), manifest and timeline (data formats),
-                 audio_offset and sync (matching clips by sound), evaluate (sync error), view (server)
+                 audio_offset and picture_offset (matching clips by sound and by light), sync,
+                 evaluate (sync error), view (server)
 tests/           tests
 tools/           developer scripts, e.g. fetching a public dataset to measure sync on real footage
 web/             the viewer: plain HTML, CSS and JavaScript modules, no build step

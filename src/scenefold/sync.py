@@ -6,15 +6,20 @@ are set aside. The rest are solved together with weighted least squares, droppin
 disagree with the others. Clips that never overlap directly are still placed through the clips
 between them. Clock drift measured on long pairs is solved the same way, so each clip also gets
 its own clock rate.
+
+Sound arrives late from far away, so the placed clips are then matched a second time by their
+pictures (see picture_offset.py). That says how much later than the nearest clip each phone heard
+the event, which is what lines the pictures up rather than the sound.
 """
 
+from collections.abc import Callable
 from itertools import combinations
 from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
 
-from scenefold import audio_offset
+from scenefold import audio_offset, media, picture_offset
 from scenefold.manifest import (
     Clip,
     ClipStatus,
@@ -189,10 +194,81 @@ def _least_squares(
     return offsets, residuals, left_out
 
 
+def measure_pictures(
+    event_dir: Path,
+    clips: dict[str, Clip],
+    solution: Solution,
+    settings: SyncSettings,
+    progress: Callable[[str], None] | None = None,
+) -> dict[str, float]:
+    """How much later than the nearest clip each placed clip heard the event, from the pictures.
+
+    Every pair of placed clips is matched again on its brightness alone, searching either side of
+    where the sound put it. Matches that don't stand clear of far-away lags are ignored, and the
+    rest are solved into one delay per clip. Empty when the light never changed enough to tell,
+    which is the honest answer for a steadily lit room. The pair rows are filled in as it goes.
+    """
+    placed = [clip_id for clip_id in solution.offsets if clips[clip_id].proxy]
+    if len(placed) < 2:
+        return {}
+    curves: dict[str, np.ndarray] = {}
+    for clip_id in placed:
+        if progress:
+            progress(f"reading the pictures of {clips[clip_id].source.name}")
+        try:
+            curves[clip_id] = picture_offset.load_brightness(event_dir / clips[clip_id].proxy.video)
+        except (media.ProxyError, media.MediaToolsError, OSError):
+            continue  # one unreadable clip must not stop the others
+    rows = {(p.clip_a, p.clip_b): p for p in solution.pairs}
+    differences: list[tuple[str, str, float, float]] = []
+    order: list[PairMeasurement] = []
+    for a, b in combinations([c for c in placed if c in curves], 2):
+        rate_a = 1 + (solution.drift_ppm.get(a) or 0.0) * 1e-6
+        sound_lag = (solution.offsets[b] - solution.offsets[a]) * rate_a  # on A's clock
+        found = picture_offset.match_pictures(
+            curves[a],
+            curves[b],
+            sound_lag,
+            search_s=settings.picture_search_s,
+            min_overlap_s=settings.min_overlap_s,
+            drift_ppm=(solution.drift_ppm.get(b) or 0.0) - (solution.drift_ppm.get(a) or 0.0),
+        )
+        row = rows.get((a, b)) or rows.get((b, a))
+        if found is None or row is None:
+            continue
+        difference = (found.lag_s - sound_lag) / rate_a  # master seconds
+        row.picture_lag_s = round(found.lag_s, 6)
+        row.picture_clearness = round(found.clearness, 2)
+        row.picture_difference_ms = round(difference * 1000, 1)
+        if found.clearness < settings.min_clearness:
+            continue
+        differences.append((a, b, difference, float(np.sqrt(found.clearness))))
+        order.append(row)
+
+    late = picture_offset.solve_delays(
+        [c for c in placed if c in curves],
+        differences,
+        max_residual_s=settings.max_picture_residual_ms / 1000,
+    )
+    for row, used in zip(order, late.used, strict=True):
+        row.picture_used = used
+    return late.heard_late_s
+
+
 def sync_event(
-    event_name: str, data_dir: str | Path = "data", settings: SyncSettings | None = None
+    event_name: str,
+    data_dir: str | Path = "data",
+    settings: SyncSettings | None = None,
+    *,
+    pictures: bool = True,
+    progress: Callable[[str], None] | None = None,
 ) -> Timeline:
-    """Measure, solve, and write `timeline.json` for an ingested event."""
+    """Measure, solve, and write `timeline.json` for an ingested event.
+
+    With `pictures`, the placed clips are matched a second time by their brightness, which says how
+    far each phone stood from the sound. It has to decode every working copy, so it is the slow
+    part of a sync; leave it out to place clips by sound alone.
+    """
     settings = settings or SyncSettings()
     try:
         event_id = normalize_event_id(event_name)
@@ -241,6 +317,11 @@ def sync_event(
     solution = solve_timeline([clip.clip_id for clip in order], measured, settings)
     pairs = solution.pairs
 
+    late: dict[str, float] = {}
+    if pictures:
+        by_id = {clip.clip_id: clip for clip in manifest.clips}
+        late = measure_pictures(event_dir, by_id, solution, settings, progress)
+
     placements = []
     for clip in manifest.clips:
         duration = clip.proxy.duration_s if clip.proxy else (clip.source.duration_s or 0.0)
@@ -255,6 +336,7 @@ def sync_event(
                     drift_ppm=_rounded(solution.drift_ppm[clip.clip_id], 2),
                     duration_s=duration,
                     confidence=max(best) if best else None,
+                    heard_late_s=_rounded(late.get(clip.clip_id), 6),
                 )
             )
         else:

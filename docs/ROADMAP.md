@@ -3,7 +3,7 @@
 We build Scenefold one phase at a time. Each phase ends with something that runs, is tested, and is measured.
 The vision and firm principles live in [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md). This file covers **what to build next** and **when a phase counts as done**.
 
-Last updated: 2026-09-17
+Last updated: 2026-09-20
 
 ## Status
 
@@ -12,6 +12,7 @@ Last updated: 2026-09-17
 | 0 | Foundation | — | 1 | Done |
 | 1 | Ingest | 1 | 1 | Done; checked on 12 real phone clips (sound now follows the file timestamps) |
 | 2 | Sync | 2 | 1–2 | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines |
+| 2b | Place the pictures, not the sound arrival | 2 | ~1 | In progress: measured in sync; viewer left |
 | 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Done: viewer within half a frame, checked on the pictures too, demo event and README GIF |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Not started |
 | 5 | Clip understanding | 4 | 2 | Not started |
@@ -239,15 +240,31 @@ The claps give ground truth for sync error and clock drift.
 - Done 2026-09-19: every "Done when" item is met. The home clap recording and the Nexus S check test
   picture sync, which the Phase 3 viewer makes easy to see, so they moved there.
 
-**Next in sync, after v0.1.0: place the pictures, not the sound arrival.** The Phase 3 picture check
-showed phones at one stadium show sitting up to 423 ms apart in when they heard the event, so
-sound-based offsets put their pictures that far out (below, Phase 3). Plan: measure each clip's
-brightness curve during sync, match placed pairs around their sound lag, and solve one delay per
-clip (this is `tools/check_pictures.py`, which already does it as a check). Then `timeline.json`
-carries `heard_late_ms` per clip, `scenefold sync` reports it as distance, and the viewer can show
-the event instead of its sound. Keep both: sound alignment is what you want when listening to one
-clip, picture alignment is what you want when watching several. It only works where something
-visibly changes together (stage lighting), so it must stay optional and say when it has no answer.
+### Phase 2b: place the pictures, not the sound arrival (2026-09-20, after v0.1.0)
+
+The Phase 3 picture check found phones at one stadium show sitting up to 423 ms apart in when they
+heard the event, so sound-based offsets put their pictures that far out (below, Phase 3). That
+measuring is now part of sync itself, in `src/scenefold/picture_offset.py`:
+
+- Every placed pair is matched again on its brightness curve, searching ±2 s around where the sound
+  put it, with the pair's measured clock drift cancelled exactly as the sound does it.
+- A match counts only when it stands 4 standard deviations above lags more than 5 s away. Scores
+  divide by the square root of the overlap, so every lag is judged on the same scale however long
+  the two clips share.
+- The clear differences are solved into one delay per clip, dropping any that disagrees with the
+  rest by more than 60 ms, exactly as the sound solver does. `timeline.json` gains `heard_late_s`
+  per clip and the picture measurement on every pair (`schema_version` 2).
+- `scenefold sync` prints it as a distance; `--sound-only` skips the pass, which has to read every
+  picture. The viewer can line up the pictures instead of the sound.
+
+**Measured.** On drawn clips whose true distances are known, the delays come back within a frame,
+and where the truth is zero it reads within 17 ms (half a frame). On the two Coldplay nights it
+reproduces what the standalone check had found: 0/46/52/97/273 ms on the 26th and up to 420 ms on
+the 25th. On both Jiku subsets it says it cannot tell, because their lighting is steady — the
+honest answer, and the reason it can never be the only way clips are placed.
+
+`tools/check_pictures.py`, which found the effect, was deleted: sync now measures it, so keeping a
+second implementation would only let the two drift apart.
 
 ---
 
@@ -265,8 +282,8 @@ visibly changes together (stage lighting), so it must stay optional and say when
 - One audio track at a time, selectable.
 - Sync report page: pair graph, offsets, confidence, rejected pairs.
 - Visual sync checks (carried from Phase 2): match the clips by their pictures alone and compare
-  with where sound put them (`tools/check_pictures.py`), including `jiku-saf-long`, to settle the
-  Nexus S's 70–110 ms disagreement with the published ground truth.
+  with where sound put them, including `jiku-saf-long`, to settle the Nexus S's 70–110 ms
+  disagreement with the published ground truth.
 
 **Done when**
 - 4 clips at 720p play in sync, drift measured under one frame.
@@ -303,7 +320,8 @@ visibly changes together (stage lighting), so it must stay optional and say when
     moment early (a paused video needs ~60 ms to get going).
 **Picture check (2026-09-20): sync is right, and the sound arrives late from far away**
 
-`tools/check_pictures.py` never listens. It reads how bright each working copy is frame by frame
+The picture check (then `tools/check_pictures.py`, now part of sync) never listens. It reads how
+bright each working copy is frame by frame
 (stage lighting, flashes), removes slow changes, and matches those curves for every placed pair,
 searching ±2 s around where sound put them. A match counts when its peak stands 4 standard
 deviations above lags more than 5 s away, where nothing should line up.
@@ -342,7 +360,7 @@ Chrome and turns that into `docs/viewer.gif` (2 MB). On this event:
 
 - sync places all four within 1 ms of their true offsets, and measures drift within ~25 ppm;
 - `tools/check_viewer.py` passes: every picture within a frame, jumps included (the Done-when);
-- `tools/check_pictures.py` gets all six pairs clearly (4.7–5.3σ) and puts the pictures within
+- the picture check gets all six pairs clearly (4.7–5.3σ) and puts the pictures within
   12 ms of the sound, with fitted distances of 0–3 m. Nothing travels in a drawn show, so zero is
   the right answer: the picture check is right where the truth is known.
 

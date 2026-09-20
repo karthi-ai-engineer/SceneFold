@@ -328,6 +328,23 @@ class ProxyResult:
     issues: list[Issue] = field(default_factory=list)
 
 
+def frame_greys(path: Path, width: int, height: int) -> bytes:
+    """Every frame of a video, shrunk to width x height and turned grey: raw 8-bit, frame by frame.
+
+    Used to read how bright a clip is over time (see picture_offset.py). Shrinking happens inside
+    FFmpeg, so only a few bytes a frame come back however large the video is.
+    """
+    proc = subprocess.run(
+        [find_tools().ffmpeg, "-v", "error", "-nostdin", "-i", str(path),
+         "-vf", f"scale={width}:{height},format=gray", "-f", "rawvideo", "-"],
+        stdin=subprocess.DEVNULL, capture_output=True,
+    )  # fmt: skip
+    if proc.returncode != 0:
+        stderr = proc.stderr.decode("utf-8", errors="replace")
+        raise ProxyError(f"could not read the pictures of {path.name}: {error_summary(stderr)}")
+    return proc.stdout
+
+
 def proxy_size(video: VideoStream, max_short_side: int) -> tuple[int, int]:
     """Picture size of the working copy: shorter side capped, aspect kept, both sides even."""
     width, height = video.display_width, video.display_height

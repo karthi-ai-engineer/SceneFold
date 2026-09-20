@@ -52,7 +52,7 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 267 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 286 passed, 1 xfailed (the known chorus limit)
 node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+)
 ```
 
@@ -315,3 +315,20 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    artifact was updated to match.
 8. Not done, and worth knowing: no progress post has been written for v0.1.0 (the roadmap's Phase 3
    asks for one), and nothing was published outside the repo.
+9. **Started Phase 2b: place the pictures, not the sound arrival** (branch `phase-2b-picture-sync`).
+   `src/scenefold/picture_offset.py` matches placed pairs on their brightness curves around where
+   the sound put them, cancelling the pair's measured drift, and solves the clear differences into
+   one `heard_late_s` per clip (`timeline.json` schema 2, plus the picture measurement on every
+   pair). `scenefold sync` prints it as a distance and takes `--sound-only` to skip the pass.
+   Two measures matter and were both learned the hard way: a match is judged against lags more
+   than 5 s away, and scores divide by the square root of the overlap so short and long overlaps
+   are judged on the same scale (the first attempt refused pairs that barely overlapped).
+10. Verified: on drawn clips with known distances the delays come back within a frame, and within
+    17 ms where the truth is zero; on the Coldplay nights it reproduces the standalone check
+    (0/46/52/97/273 ms on the 26th, up to 420 ms on the 25th); on both Jiku subsets it says it
+    cannot tell, because their lighting is steady. `tools/check_pictures.py` was deleted — sync
+    measures this now, and two implementations would drift apart.
+11. Left for this branch: the viewer's side (line up by pictures or by sound, and the new columns
+    in the sync report). One open question: `scenefold evaluate` compares clips at ground-truth
+    moments using the sound alignment. Moments found by stepping through pictures (a flash) would
+    want the picture alignment instead, so evaluate may need to say which it is using.

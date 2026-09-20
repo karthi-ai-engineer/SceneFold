@@ -193,6 +193,7 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
     <ol class="pipeline" aria-label="Pipeline">
       <li><span class="chip built"><span class="dot"></span>Ingest</span></li>
       <li><span class="chip built"><span class="dot"></span>Sync by sound</span></li>
+      <li><span class="chip built"><span class="dot"></span>Distance from the sound</span></li>
       <li><span class="chip built"><span class="dot"></span>Evaluate</span></li>
       <li><span class="chip built"><span class="dot"></span>Synced viewer</span></li>
       <li><span class="chip next"><span class="dot"></span>Quality cut (next)</span></li>
@@ -424,9 +425,9 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
 
   <section class="stage" id="sound">
     <div class="stage-head">
-      <div class="where">tools/check_pictures.py — found on real concert clips, 2026-09-20</div>
+      <div class="where">src/scenefold/picture_offset.py — <code>scenefold sync</code></div>
       <h2>9. Sound takes time to arrive</h2>
-      <p>Light reaches every phone at once; sound crawls, about one metre every 2.9 milliseconds. Sync listens, so it lines up the moment each phone <em>heard</em> the event — and then a phone standing further back has its picture placed late by exactly its extra distance. On two stadium concerts this reached 423 ms, twelve frames. Matching the clips by their brightness instead of their sound measures it: that is the next piece of work.</p>
+      <p>Light reaches every phone at once; sound crawls, about one metre every 2.9 milliseconds. Sync listens, so it lines up the moment each phone <em>heard</em> the event — and then a phone standing further back has its picture placed late by exactly its extra distance. On two stadium concerts this reached 423 ms, twelve frames. So sync matches the placed clips a second time by their brightness, which never listens, and writes down how much later than the nearest phone each one heard the event. The viewer can then hold the pictures together instead of the sound.</p>
     </div>
     <div class="panel">
       <div class="controls">
@@ -1909,7 +1910,7 @@ STAGES.output = (() => {
   return { reset() { render(); }, render };
 })();
 
-/* ================= 9. sound takes time to arrive (tools/check_pictures.py) ================= */
+/* ================= 9. sound takes time to arrive (picture_offset.py) ================= */
 STAGES.sound = (() => {
   const plan = $("sn-venue-canvas"), lines = $("sn-lines");
   const SPEED = 343; // metres a second
@@ -1967,7 +1968,7 @@ STAGES.sound = (() => {
     const g = setup(lines), all = phones(), flashAt = 1.0, span = 2.2;
     const rows = [
       { title: "Lined up by sound — what sync does today", picture: (p) => flashAt - p.delay, bang: () => flashAt },
-      { title: "Lined up by picture — what the brightness match allows", picture: () => flashAt, bang: (p) => flashAt + p.delay },
+      { title: "Lined up by picture — what the brightness match makes possible", picture: () => flashAt, bang: (p) => flashAt + p.delay },
     ];
     const rowH = (lines._h - 20) / 2;
     rows.forEach((row, index) => {

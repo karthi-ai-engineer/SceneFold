@@ -124,7 +124,7 @@ def _best_lag(
     )
     runner_up = float(outside.max()) if outside.size else peak
     confidence = peak / runner_up if runner_up > 0 else 0.0
-    return lowest + best + _parabolic_offset(strength, best), confidence
+    return lowest + best + parabolic_offset(strength, best), confidence
 
 
 def _lag_from_pieces(a: np.ndarray, b: np.ndarray, rate: int, beta: float) -> float | None:
@@ -262,7 +262,7 @@ def _window_lags(
             continue
         best = int(np.argmax(strength))
         found.append(
-            (time, (lowest + best + _parabolic_offset(strength, best) + first - low) / rate)
+            (time, (lowest + best + parabolic_offset(strength, best) + first - low) / rate)
         )
     return found
 
@@ -272,7 +272,7 @@ def _prepare(samples: np.ndarray) -> np.ndarray:
     return samples - samples.mean(dtype=np.float64).astype(np.float32) if samples.size else samples
 
 
-def _parabolic_offset(values: np.ndarray, index: int) -> float:
+def parabolic_offset(values: np.ndarray, index: int) -> float:
     """Sub-sample position of a peak from its two neighbours (0 at the edges of the search)."""
     if index == 0 or index == len(values) - 1:
         return 0.0
