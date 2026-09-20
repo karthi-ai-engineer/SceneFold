@@ -4,6 +4,14 @@
 //   t_local = (t_master - offset_s) * (1 + drift_ppm / 1e6)
 // The viewer runs one master clock and keeps every video at the clip time that clock asks for:
 // small errors are fixed by playing a little faster or slower, large ones by jumping.
+//
+// The offsets come from the sound, so they line up the moment each phone *heard* the event. Sound
+// needs about 2.9 ms to travel a metre, so a phone further from the stage heard the event later,
+// and lining the clips up on their sound leaves its picture running that much ahead of the others
+// (measured: up to 423 ms, twelve frames, at a stadium concert). Where the pictures could tell, a
+// clip also carries `heard_late_s`: how much later than the nearest clip it heard the event. Hold
+// the clip back by that much and the pictures line up instead. The two cannot hold at once, so
+// every conversion below takes the alignment in force.
 
 // A jump makes the browser decode from the previous keyframe (up to 1 s of video), which stalls the
 // picture for a few hundred ms, so a playing video jumps only when it is far off (the viewer aims
@@ -25,24 +33,35 @@ export const TRIM = 0.003; // on time: this much fast or slow, outside Chrome's 
 export const TRIM_TURN_S = 0.002; // the trim turns round once the smoothed error passes this
 export const FRAME_S = 1 / 30; // working copies run at 30 fps
 
+// Watching several clips at once asks for PICTURES; listening to one asks for SOUND, which is what
+// the offsets mean on their own, so it stays the default here.
+export const PICTURES = "pictures";
+export const SOUND = "sound";
+
 /** Clip seconds that pass per master second. */
 export const rateOf = (clip) => 1 + (clip.drift_ppm ?? 0) * 1e-6;
 
-export const localTime = (clip, tMaster) => (tMaster - clip.offset_s) * rateOf(clip);
+/** Seconds this phone heard the event later than the nearest one; 0 when the pictures can't tell. */
+export const heardLate = (clip, align = SOUND) => (align === PICTURES ? clip.heard_late_s ?? 0 : 0);
 
-export const masterTime = (clip, tLocal) => clip.offset_s + tLocal / rateOf(clip);
+/** Where this clip's time 0 sits on the master clock under an alignment. */
+export const startTime = (clip, align = SOUND) => clip.offset_s + heardLate(clip, align);
+
+export const localTime = (clip, tMaster, align = SOUND) => (tMaster - startTime(clip, align)) * rateOf(clip);
+
+export const masterTime = (clip, tLocal, align = SOUND) => startTime(clip, align) + tLocal / rateOf(clip);
 
 /** True while the clip was recording at this master time. */
-export function recording(clip, tMaster) {
-  const t = localTime(clip, tMaster);
+export function recording(clip, tMaster, align = SOUND) {
+  const t = localTime(clip, tMaster, align);
   return t >= 0 && t < clip.duration_s;
 }
 
 /** Master time span covered by the placed clips: [start, end]. */
-export function span(clips) {
+export function span(clips, align = SOUND) {
   if (!clips.length) return [0, 0];
-  const ends = clips.map((c) => masterTime(c, c.duration_s));
-  return [Math.min(...clips.map((c) => c.offset_s)), Math.max(...ends)];
+  const ends = clips.map((c) => masterTime(c, c.duration_s, align));
+  return [Math.min(...clips.map((c) => startTime(c, align))), Math.max(...ends)];
 }
 
 /** Keeps one video on the clock, frame by frame. */

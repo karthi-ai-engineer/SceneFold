@@ -33,7 +33,16 @@ const state = {
   dragT: null, // master time under the pointer while scrubbing the lanes
   settleUntil: 0,
   playLead: 0.06, // seconds a paused video needs between play() and moving; learned
+  // Sound arrives late from far away, so the pictures and the sound cannot both line up. Watching
+  // several clips at once asks for the pictures; the sound stays a click away for listening.
+  align: sync.SOUND,
 };
+
+// Every conversion between the clock and a clip goes through the alignment in force, so no part of
+// the viewer can be left lining up on the other one.
+const localTime = (clip, t) => sync.localTime(clip, t, state.align);
+const masterTime = (clip, t) => sync.masterTime(clip, t, state.align);
+const recording = (clip, t) => sync.recording(clip, t, state.align);
 
 async function fetchJson(url) {
   const response = await fetch(url);
@@ -92,8 +101,8 @@ function watchFrames(clip) {
 function measure(clip, shown, at) {
   if (!state.playing || state.busy || clip.video.paused || clip.starting) return;
   const tMaster = state.clock.time(at);
-  if (!sync.recording(clip, tMaster)) return;
-  const error = shown - sync.localTime(clip, tMaster);
+  if (!recording(clip, tMaster)) return;
+  const error = shown - localTime(clip, tMaster);
   if (clip.joining) {
     clip.joining = false; // first frame after an early start: late means press play earlier next time
     state.playLead = clamp(state.playLead - 0.5 * error, 0, 0.4);
@@ -120,7 +129,7 @@ function jump(clip) {
     const took = (performance.now() - started) / 1000;
     clip.seekLead = clamp(0.6 * clip.seekLead + 0.4 * took, 0.05, 1.5);
   }, { once: true });
-  video.currentTime = sync.localTime(clip, state.clock.time() + clip.seekLead * state.clock.speed);
+  video.currentTime = localTime(clip, state.clock.time() + clip.seekLead * state.clock.speed);
 }
 
 
@@ -141,8 +150,8 @@ function startClip(clip, t) {
   clip.steer.reset();
   clip.video.playbackRate = sync.rateOf(clip) * state.clock.speed;
   // usually it already waits on the right frame; if not, jump to where the clock will be
-  if (Math.abs(clip.video.currentTime - sync.localTime(clip, t)) > 0.2) {
-    clip.video.currentTime = sync.localTime(clip, t + clip.seekLead * state.clock.speed);
+  if (Math.abs(clip.video.currentTime - localTime(clip, t)) > 0.2) {
+    clip.video.currentTime = localTime(clip, t + clip.seekLead * state.clock.speed);
   }
   clip.video.play().catch(() => {}).finally(() => { clip.starting = false; });
 }
@@ -154,10 +163,10 @@ function tick(now) {
     pause();
   } else {
     for (const clip of state.clips) {
-      const on = sync.recording(clip, t);
+      const on = recording(clip, t);
       clip.idle.hidden = on || clip.video.error !== null;
       if (!on) {
-        const local = sync.localTime(clip, t);
+        const local = localTime(clip, t);
         // a paused video takes a moment to get going: press play that much before its recording
         // begins (state.playLead is learned from how far off each such start lands)
         if (state.playing && !state.busy && local < 0 && -local <= state.playLead * state.clock.speed) {
@@ -191,7 +200,7 @@ async function play() {
   if (state.clock.time() >= state.span[1] - 0.05) await seekTo(state.span[0]);
   state.busy = true;
   const t = state.clock.time();
-  const starting = state.clips.filter((clip) => sync.recording(clip, t));
+  const starting = state.clips.filter((clip) => recording(clip, t));
   for (const clip of state.clips) {
     clip.steer.reset();
     clip.video.playbackRate = sync.rateOf(clip) * state.clock.speed;
@@ -204,7 +213,7 @@ async function play() {
     await moving(heard.video);
   }
   await Promise.allSettled(starting.filter((clip) => clip !== heard).map((clip) => clip.video.play()));
-  state.clock.set(heard ? sync.masterTime(heard, heard.video.currentTime) : t);
+  state.clock.set(heard ? masterTime(heard, heard.video.currentTime) : t);
   state.clock.play();
   state.settleUntil = performance.now() + START_GRACE_MS;
   state.playing = true;
@@ -249,7 +258,7 @@ async function seekTo(t, { resume = false } = {}) {
 }
 
 function seekVideo(clip, t) {
-  const local = clamp(sync.localTime(clip, t), 0, Math.max(0, clip.duration_s - 0.04));
+  const local = clamp(localTime(clip, t), 0, Math.max(0, clip.duration_s - 0.04));
   const video = clip.video;
   return new Promise((resolve) => {
     if (Math.abs(video.currentTime - local) < 0.0005 && !video.seeking) return resolve();
@@ -269,6 +278,19 @@ function setSpeed(speed) {
   state.clock.setSpeed(speed);
   for (const clip of state.clips) clip.video.playbackRate = sync.rateOf(clip) * speed;
   $("speed").value = String(speed);
+}
+
+/** Line the clips up by their pictures, or by the moment each phone heard the event. */
+async function setAlign(align) {
+  if (align === state.align) return;
+  state.align = align;
+  state.span = sync.span(state.clips, align);
+  $("align").value = align;
+  $("span").textContent = `/ ${sync.formatTime(state.span[1], 1)}`;
+  // Every video now belongs at a slightly different frame, so move them all the usual way: seekTo
+  // puts each one in place and plays on if it was playing.
+  await seekTo(state.clock.time());
+  toast(align === sync.PICTURES ? "Lined up on what the phones saw" : "Lined up on what the phones heard");
 }
 
 function setAudio(clipId) {
@@ -340,7 +362,7 @@ function drawLanes(now) {
     g.fillRect(x0, y + 3, x1 - x0, LANE_H - 6);
     g.fillStyle = clip.color;
     g.globalAlpha = clip === state.audible ? 1 : 0.8;
-    const a = X(clip.offset_s), b = X(sync.masterTime(clip, clip.duration_s));
+    const a = X(masterTime(clip, 0)), b = X(masterTime(clip, clip.duration_s));
     g.beginPath(); g.roundRect(a, y + 3, Math.max(2, b - a), LANE_H - 6, 4); g.fill();
     g.globalAlpha = 1;
     g.fillStyle = "#c3c2b7"; g.textAlign = "left";
@@ -391,7 +413,7 @@ function updateHealth() {
   const t = state.clock.time();
   const rows = state.clips.map((clip) => {
     const s = clip.stats.summary();
-    const on = sync.recording(clip, t);
+    const on = recording(clip, t);
     clip.badge.className = `badge ${on && s.last !== null ? level(Math.abs(s.last)) : ""}`;
     clip.badge.textContent = on && s.last !== null ? `${s.last >= 0 ? "+" : "−"}${Math.abs(s.last).toFixed(0)} ms` : "—";
     const verdict = s.p95Abs === null ? "" : `<span class="pill ${level(s.p95Abs)}">${s.p95Abs <= FRAME_MS ? "within a frame" : "off by over a frame"}</span>`;
@@ -412,6 +434,7 @@ function bindControls() {
   $("next-5").addEventListener("click", () => seekTo(state.clock.time() + 5));
   $("speed").addEventListener("change", (event) => setSpeed(Number(event.target.value)));
   $("audio").addEventListener("change", (event) => setAudio(event.target.value || null));
+  $("align").addEventListener("change", (event) => setAlign(event.target.value));
   for (const tab of ["viewer", "report"]) {
     $(`tab-${tab}`).addEventListener("click", () => {
       for (const other of ["viewer", "report"]) {
@@ -448,7 +471,11 @@ async function boot() {
   state.timeline = timeline;
   state.clips = timeline.clips.filter((c) => c.placed).map(makeClip);
   state.unplaced = timeline.clips.filter((c) => !c.placed);
-  state.span = sync.span(state.clips);
+  // Watching several clips is the whole point of this page, so start on the pictures whenever sync
+  // worked out how late each phone heard the event; otherwise there is nothing to choose between.
+  const knowsDistance = state.clips.some((c) => (c.heard_late_s ?? null) !== null);
+  state.align = knowsDistance ? sync.PICTURES : sync.SOUND;
+  state.span = sync.span(state.clips, state.align);
   const colorOf = Object.fromEntries(state.clips.map((c) => [c.clip_id, c.color]));
 
   document.title = `${timeline.event_id} · Scenefold Viewer`;
@@ -457,6 +484,11 @@ async function boot() {
   $("span").textContent = `/ ${sync.formatTime(state.span[1], 1)}`;
   $("tiles").replaceChildren(...state.clips.map((clip) => clip.tile));
   $("audio").innerHTML = `<option value="">No sound</option>` + state.clips.map((c, i) => `<option value="${c.clip_id}">${i + 1}. ${esc(c.name)}</option>`).join("");
+  $("align").value = state.align;
+  $("align").disabled = !knowsDistance;
+  if (!knowsDistance) {
+    $("align-label").title = "The pictures of these clips never matched clearly enough to tell how far each phone stood from the sound, so they can only be lined up on what the phones heard.";
+  }
   $("unplaced").textContent = state.unplaced.length ? `Not on the clock: ${state.unplaced.map((c) => `${c.name} (${c.reason})`).join("; ")}.` : "";
   if (!state.clips.length) {
     $("tiles").innerHTML = `<p class="muted">No clip could be placed on the clock. See the sync report.</p>`;
@@ -482,6 +514,8 @@ window.scenefold = {
   step,
   setSpeed,
   setAudio,
+  setAlign,
+  align: () => state.align,
   time: () => state.clock.time(),
   span: () => [...state.span],
   playing: () => state.playing,
@@ -489,16 +523,16 @@ window.scenefold = {
   // after a seek, while paused: how far each recording video sits from where the clock wants it
   positions: () => {
     const t = state.clock.time();
-    return state.clips.filter((clip) => sync.recording(clip, t)).map((clip) => ({
+    return state.clips.filter((clip) => recording(clip, t)).map((clip) => ({
       clip_id: clip.clip_id, name: clip.name,
-      error_ms: (clip.video.currentTime - sync.localTime(clip, t)) * 1000,
+      error_ms: (clip.video.currentTime - localTime(clip, t)) * 1000,
     }));
   },
   stats: () => {
     const t = state.clock.time();
     return state.clips.map((clip) => ({
       clip_id: clip.clip_id, name: clip.name, audible: clip === state.audible,
-      recording: sync.recording(clip, t), rate: clip.video.playbackRate, ...clip.stats.summary(),
+      recording: recording(clip, t), rate: clip.video.playbackRate, ...clip.stats.summary(),
     }));
   },
 };

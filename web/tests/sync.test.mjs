@@ -9,16 +9,20 @@ import {
   MAX_NUDGE,
   MIN_NUDGE,
   MasterClock,
+  PICTURES,
   SEEK_S,
+  SOUND,
   Steering,
   TRIM,
   UNLOCK_S,
   formatTime,
+  heardLate,
   localTime,
   masterTime,
   rateOf,
   recording,
   span,
+  startTime,
 } from "../sync.js";
 
 const clip = { offset_s: 12.5, drift_ppm: 40, duration_s: 60 };
@@ -44,6 +48,52 @@ test("the covered span runs from the earliest start to the latest end", () => {
   close(start, 0);
   close(end, masterTime(clip, 60));
   assert.deepEqual(span([]), [0, 0]);
+});
+
+// A phone 94 m further from the speakers heard the event 273 ms later (sound: 2.9 ms a metre).
+const far = { offset_s: 20, drift_ppm: 0, duration_s: 30, heard_late_s: 0.273 };
+const nearest = { offset_s: 5, drift_ppm: 0, duration_s: 30, heard_late_s: 0 };
+const untold = { offset_s: 5, drift_ppm: 40, duration_s: 30, heard_late_s: null }; // pictures couldn't tell
+
+test("lining up the pictures holds a far phone's clip back by what it heard late", () => {
+  close(heardLate(far, PICTURES), 0.273);
+  close(heardLate(far, SOUND), 0);
+  close(localTime(far, 20), 0); // no alignment asked for: the sound, which is what offset_s means
+  close(localTime(far, 20, SOUND), 0);
+  close(localTime(far, 20.273, PICTURES), 0); // its first frame now belongs 273 ms later
+  close(localTime(far, 40, PICTURES), localTime(far, 40, SOUND) - 0.273);
+  close(startTime(far, PICTURES) - startTime(far, SOUND), 0.273);
+  close(startTime(nearest, PICTURES), 5); // the clip nearest the sound never moves
+});
+
+test("clip and master time round-trip under both alignments", () => {
+  for (const align of [SOUND, PICTURES]) {
+    for (const c of [far, nearest, untold]) {
+      for (const t of [0, 3.25, 29.9]) close(localTime(c, masterTime(c, t, align), align), t);
+    }
+  }
+});
+
+test("a clip whose pictures never matched stays where its sound put it", () => {
+  close(heardLate(untold, PICTURES), 0);
+  close(heardLate({ offset_s: 0 }, PICTURES), 0); // an older timeline has no such field at all
+  close(localTime(untold, 17, PICTURES), localTime(untold, 17, SOUND));
+  close(masterTime(untold, 12, PICTURES), masterTime(untold, 12, SOUND));
+  assert.equal(recording(untold, 4.99, PICTURES), false);
+  assert.equal(recording(untold, 5, PICTURES), true);
+});
+
+test("under the picture alignment a far clip records, and covers the timeline, later", () => {
+  assert.equal(recording(far, 20.1, SOUND), true);
+  assert.equal(recording(far, 20.1, PICTURES), false); // held back: its first frame is still to come
+  assert.equal(recording(far, 20.273, PICTURES), true);
+  assert.equal(recording(far, 50.2729, PICTURES), true);
+  assert.equal(recording(far, 50.274, PICTURES), false); // past its last frame
+  const [start, end] = span([far, nearest], PICTURES);
+  close(start, 5); // the nearest clip is where it always was
+  close(end, 50.273); // the far clip's end moved with it
+  close(span([far, nearest], SOUND)[1], 50);
+  assert.deepEqual(span([], PICTURES), [0, 0]);
 });
 
 test("big errors jump; a video on time trims gently toward the clock", () => {
