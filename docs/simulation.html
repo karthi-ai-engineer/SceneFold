@@ -210,6 +210,7 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
     <li><a href="#evaluate"><span>6</span>Check accuracy</a></li>
     <li><a href="#output"><span>7</span>Output</a></li>
     <li><a href="#viewer"><span>8</span>Watch together</a></li>
+    <li><a href="#sound"><span>9</span>Sound travels</a></li>
   </ol>
 </nav>
 
@@ -418,6 +419,31 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
       <canvas id="vw-tiles" class="chart" width="1080" height="230" aria-label="Simulated video tiles"></canvas>
       <div class="fig-title"><span>Each video's error on every frame it shows (ms). The band is half a frame either way.</span></div>
       <canvas id="vw-errors" class="chart" width="1080" height="200" aria-label="Per-frame sync error of each simulated video"></canvas>
+    </div>
+  </section>
+
+  <section class="stage" id="sound">
+    <div class="stage-head">
+      <div class="where">tools/check_pictures.py — found on real concert clips, 2026-09-20</div>
+      <h2>9. Sound takes time to arrive</h2>
+      <p>Light reaches every phone at once; sound crawls, about one metre every 2.9 milliseconds. Sync listens, so it lines up the moment each phone <em>heard</em> the event — and then a phone standing further back has its picture placed late by exactly its extra distance. On two stadium concerts this reached 423 ms, twelve frames. Matching the clips by their brightness instead of their sound measures it: that is the next piece of work.</p>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <label class="field">Where they stand
+          <select id="sn-venue">
+            <option value="12">A room, 12 m across</option>
+            <option value="45">A club, 45 m</option>
+            <option value="150" selected>A stadium, 150 m</option>
+          </select>
+        </label>
+        <button id="sn-play" class="primary">▶ Flash and bang</button>
+        <span class="note" id="sn-status"></span>
+      </div>
+      <div class="fig-title"><span>Seen from above. The ring is the sound spreading out; a phone lights up when it hears it.</span></div>
+      <canvas id="sn-venue-canvas" class="chart" width="1080" height="260" aria-label="Phones at different distances from the stage, with sound spreading out"></canvas>
+      <div class="fig-title"><span>The same flash in each clip, once the clips are lined up. ☀ is what they saw, ♪ what they heard.</span></div>
+      <canvas id="sn-lines" class="chart" width="1080" height="300" aria-label="The flash and the bang in each clip, lined up by sound and by picture"></canvas>
     </div>
   </section>
 
@@ -1881,6 +1907,110 @@ STAGES.output = (() => {
     $("out-json").innerHTML = esc(JSON.stringify(timeline, null, 2)).replace(/&quot;([^&]+)&quot;:/g, '<span class="k">&quot;$1&quot;</span>:');
   }
   return { reset() { render(); }, render };
+})();
+
+/* ================= 9. sound takes time to arrive (tools/check_pictures.py) ================= */
+STAGES.sound = (() => {
+  const plan = $("sn-venue-canvas"), lines = $("sn-lines");
+  const SPEED = 343; // metres a second
+  const WATCHERS = [
+    { name: "front row", at: 0.08, across: 0.30, color: "--s1" },
+    { name: "middle", at: 0.34, across: 0.72, color: "--s2" },
+    { name: "back", at: 0.68, across: 0.22, color: "--s3" },
+    { name: "far corner", at: 1.00, across: 0.80, color: "--s4" },
+  ];
+  let heard = 0; // how long the sound has been travelling, in seconds
+
+  const spread = () => +$("sn-venue").value;
+  const phones = () => WATCHERS.map((w) => ({ ...w, metres: w.at * spread(), delay: (w.at * spread()) / SPEED }));
+
+  function drawPlan() {
+    const g = setup(plan), w = plan._w, h = plan._h;
+    const all = phones(), stage = { x: 70, y: h / 2 };
+    const perMetre = (w - 190) / (spread() || 1);
+    g.fillStyle = css("--ink-2"); // the stage, with its speakers
+    g.fillRect(stage.x - 34, stage.y - 46, 16, 92);
+    g.fillRect(stage.x - 34, stage.y - 46, 46, 8);
+    g.fillRect(stage.x - 34, stage.y + 38, 46, 8);
+    g.fontPx(12, 600); g.textAlign = "center"; g.textBaseline = "top";
+    g.fillStyle = css("--ink"); g.fillText("stage", stage.x - 10, stage.y + 54);
+
+    if (heard > 0) { // the sound, still spreading
+      g.strokeStyle = css("--accent"); g.lineWidth = 2;
+      for (const back of [0, 0.10, 0.20]) {
+        const radius = (heard - back) * SPEED * perMetre;
+        if (radius <= 0) continue;
+        g.globalAlpha = 0.55 - back * 2.2;
+        g.beginPath(); g.arc(stage.x, stage.y, radius, 0, 2 * Math.PI); g.stroke();
+      }
+      g.globalAlpha = 1; g.lineWidth = 1;
+    }
+    for (const phone of all) {
+      const x = stage.x + phone.metres * perMetre, y = 40 + phone.across * (h - 90);
+      const reached = heard >= Math.hypot(x - stage.x, y - stage.y) / perMetre / SPEED;
+      g.fillStyle = css(phone.color); g.globalAlpha = reached ? 1 : 0.35;
+      g.beginPath(); g.roundRect(x - 9, y - 15, 18, 30, 4); g.fill();
+      g.globalAlpha = 1;
+      g.fillStyle = css("--ink"); g.fontPx(12, 600); g.textAlign = "center"; g.textBaseline = "top";
+      g.fillText(phone.name, x, y + 20);
+      g.fillStyle = css("--muted"); g.fontPx(11, 400, true);
+      g.fillText(`${Math.round(phone.metres)} m · ${Math.round(phone.delay * 1000)} ms`, x, y + 36);
+      if (reached && heard > 0) { g.fillStyle = css("--accent"); g.fontPx(14, 600); g.fillText("♪", x, y - 40); }
+    }
+    const furthest = Math.max(...all.map((p) => p.delay));
+    $("sn-status").textContent = heard > 0
+      ? `sound has gone ${Math.round(heard * SPEED)} m · ${Math.round(heard * 1000)} ms`
+      : `the furthest phone hears it ${Math.round(furthest * 1000)} ms late`;
+  }
+
+  function drawLines() {
+    const g = setup(lines), all = phones(), flashAt = 1.0, span = 2.2;
+    const rows = [
+      { title: "Lined up by sound — what sync does today", picture: (p) => flashAt - p.delay, bang: () => flashAt },
+      { title: "Lined up by picture — what the brightness match allows", picture: () => flashAt, bang: (p) => flashAt + p.delay },
+    ];
+    const rowH = (lines._h - 20) / 2;
+    rows.forEach((row, index) => {
+      const top = index * rowH + 10;
+      g.fillStyle = css("--ink"); g.fontPx(12, 600); g.textAlign = "left"; g.textBaseline = "top";
+      g.fillText(row.title, 8, top);
+      const box = { l: 120, r: lines._w - 20, t: top + 26, b: top + rowH - 26 };
+      const X = (t) => box.l + (t / span) * (box.r - box.l);
+      const lineH = (box.b - box.t) / all.length;
+      all.forEach((phone, i) => {
+        const y = box.t + lineH * (i + 0.5);
+        g.strokeStyle = css("--grid"); g.beginPath(); g.moveTo(box.l, y); g.lineTo(box.r, y); g.stroke();
+        g.fillStyle = css("--ink-2"); g.fontPx(11); g.textAlign = "right"; g.textBaseline = "middle";
+        g.fillText(phone.name, box.l - 10, y);
+        g.fillStyle = css(phone.color); g.fontPx(15, 600); g.textAlign = "center";
+        g.fillText("☀", X(row.picture(phone)), y);
+        g.fillStyle = css("--accent"); g.fontPx(13, 600);
+        g.fillText("♪", X(row.bang(phone)), y);
+      });
+      g.strokeStyle = css("--axis"); // where the marks would sit if nothing travelled
+      g.setLineDash([3, 3]); g.beginPath(); g.moveTo(X(flashAt), box.t); g.lineTo(X(flashAt), box.b); g.stroke();
+      g.setLineDash([]);
+      const worst = Math.max(...all.map((p) => p.delay)) * 1000;
+      g.fillStyle = css("--muted"); g.fontPx(11, 400, true); g.textAlign = "left"; g.textBaseline = "bottom";
+      g.fillText(index === 0
+        ? `the pictures sit up to ${Math.round(worst)} ms apart, ${(worst / 33.3).toFixed(1)} frames`
+        : `the pictures agree; the far phone's sound simply arrives ${Math.round(worst)} ms later, as it did that night`,
+        box.l, box.b + 22);
+    });
+  }
+
+  function render() { drawPlan(); drawLines(); }
+
+  $("sn-venue").addEventListener("change", () => { heard = 0; render(); });
+  $("sn-play").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    setBusy(button, true, "travelling…");
+    const furthest = Math.max(...phones().map((p) => p.delay));
+    await animate(2400, (t) => { heard = t * furthest * 1.15; drawPlan(); });
+    setBusy(button, false, "▶ Flash and bang");
+  });
+
+  return { reset() { heard = 0; render(); }, render };
 })();
 
 /* ================= boot ================= */
