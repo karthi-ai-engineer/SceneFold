@@ -94,9 +94,10 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 ### Next steps, in order
 
 1. **Finish Phase 3** on `phase-3-viewer` (ROADMAP Phase 3 "Progress" lists what is done):
-   - README GIF from consenting footage (not Jiku or YouTube: real people). The generated test clips
-     from `tests/synth.py` are the safe source; record the viewer playing them.
    - Tag `v0.1.0`, then PR `phase-3-viewer` → `main`, fast-forward merge once CI is green.
+   - Done in session 6: the README GIF (`docs/viewer.gif`), from a drawn event with nobody in it
+     (`tools/demo_event.py`, recorded by `tools/record_viewer.py`). `uv run python
+     tools/demo_event.py` rebuilds it anywhere in about two minutes.
    - Done in session 6: the laptop-without-GPU item was dropped (that laptop is gone, and the viewer
      decodes in software anyway), and the picture check replaced the home clap recording.
      The Nexus S check failed for want of a signal: Jiku's lighting is steady, so no pair's
@@ -301,3 +302,13 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    by ±2 s. Brightness can't settle it; it needs a moment both seen and heard, found by hand.
 4. Dropped the Phase 3 "laptop without a dedicated GPU" item: that borrowed laptop is gone, Karthi
    has only the Predator, and the viewer decodes 720p in software either way.
+5. **A demo event nobody appears in** (`tools/demo_event.py`): FFmpeg draws a two-minute show (lit
+   stage, three figures, crowd, a clock in the picture, restless lighting), and four imaginary
+   phones film it with their own framing, brightness, noise, echo, and clock drift. Sync places all
+   four within 1 ms of the truth; the viewer check and the picture check both pass on it. This is
+   the safe source for anything public, since Jiku and YouTube footage shows real people.
+6. **README GIF** (`docs/viewer.gif`, 2 MB): `tools/record_viewer.py` photographs the viewer playing
+   in headless Chrome and builds the GIF with FFmpeg. Playwright's own recorder needs a binary it
+   downloads separately, so it takes pictures instead and plays them back at the rate they came.
+   Decision: generated media stays out of the repo, but this one GIF is documentation (like
+   `docs/scenefold.png`) and the Phase 3 "Done when" asks for it.

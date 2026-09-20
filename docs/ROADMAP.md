@@ -12,7 +12,7 @@ Last updated: 2026-09-17
 | 0 | Foundation | — | 1 | Done |
 | 1 | Ingest | 1 | 1 | Done; checked on 12 real phone clips (sound now follows the file timestamps) |
 | 2 | Sync | 2 | 1–2 | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines |
-| 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | In progress: viewer works, pictures checked against the sound on real clips; GIF and tag left |
+| 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | In progress: viewer, picture check, demo event and README GIF done; tag and merge left |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Not started |
 | 5 | Clip understanding | 4 | 2 | Not started |
 | 6 | Event knowledge + conflicts | 6, 8 | 2 | Not started |
@@ -333,8 +333,22 @@ clip.) Aligning pictures instead is the first item after Phase 3.
 Jiku cannot be checked this way: its lighting is steady, so no pair reached 3σ and the best lags
 scattered by ±2 s. The Nexus S question stays open.
 
-- Left: a README GIF from consenting footage (the Jiku and YouTube clips show real people, so not
-  those); tag `v0.1.0`.
+**Demo event and the README picture (2026-09-20).** Real footage shows real people, so the public
+picture could not come from Jiku or YouTube. `tools/demo_event.py` draws a show with FFmpeg — lit
+stage, three figures, a crowd, a clock in the picture, and restless lighting — and films it with
+four imaginary phones, each with its own window of the show, framing, brightness, microphone noise,
+echo, and clock drift. `tools/record_viewer.py` then photographs the viewer playing it in headless
+Chrome and turns that into `docs/viewer.gif` (2 MB). On this event:
+
+- sync places all four within 1 ms of their true offsets, and measures drift within ~25 ppm;
+- `tools/check_viewer.py` passes: every picture within a frame, jumps included (the Done-when);
+- `tools/check_pictures.py` gets all six pairs clearly (4.7–5.3σ) and puts the pictures within
+  12 ms of the sound, with fitted distances of 0–3 m. Nothing travels in a drawn show, so zero is
+  the right answer: the picture check is right where the truth is known.
+
+Two things the demo taught about what brightness matching needs: lighting on a regular beat matches
+at every beat, and single-frame flicker does not survive re-encoding. Its lighting is therefore
+fourteen pulses at unrelated speeds (0.4–5 Hz), which is also what makes real stage lighting work.
 
 ---
 

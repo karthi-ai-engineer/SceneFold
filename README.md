@@ -16,6 +16,13 @@ Early development. **Ingest, sync, and a synced multi-angle viewer work today.**
 cited story of the event, where the cameras disagree, and an automatic edit. See the
 [roadmap](docs/ROADMAP.md) and the [project brief](docs/PROJECT_BRIEF.md).
 
+![The viewer playing four clips of one event in sync](docs/viewer.gif)
+
+Four clips that started at different times, each with its own framing and its own clock, played
+together on one timeline. The clock burnt into the picture is the same in every tile, and each clip
+stays within a frame of where the shared clock wants it. Nobody is filmed: the clips are drawn by
+`tools/demo_event.py`, so you can make this event yourself in a minute.
+
 ## What ingest does
 
 `scenefold ingest <event> <videos or folders>` prepares phone videos of one event for the later stages:
@@ -142,6 +149,10 @@ Manifest: data/my-event/manifest.json
 Run the same command again and finished clips show `unchanged`. Event names use letters, digits,
 `-` and `_`. Use `--data-dir` to keep events somewhere other than `./data`.
 
+No videos to hand? `uv run python tools/demo_event.py` draws the imaginary show from the picture
+above — four clips that start at different times, frame different parts of it, and run on their own
+clocks — then ingests and syncs them, ready for `uv run scenefold view demo`.
+
 ```sh
 uv run scenefold sync my-event
 ```
@@ -205,6 +216,8 @@ uv run ruff check src tests tools
 node --test web/tests/sync.test.mjs                               # the viewer's timing rules
 uv run --with playwright python tools/check_viewer.py my-event   # viewer sync, in headless Chrome
 uv run python tools/check_pictures.py my-event                   # sync checked on the pictures alone
+uv run python tools/demo_event.py                                # an imaginary event, nobody filmed
+uv run --with playwright python tools/record_viewer.py demo      # the GIF above
 ```
 
 The maintainer's clones use a commit guard that only accepts the maintainer's GitHub identity:
