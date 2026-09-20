@@ -57,6 +57,16 @@ right is not settled yet. On the same clips it matched
 [audalign](https://github.com/benfmiller/audalign) over 80 seconds and beat both over three minutes,
 where their lack of clock-drift handling shows (`tools/baselines.py`).
 
+**Checked on the pictures, too.** `tools/check_pictures.py` ignores sound: it matches the clips by
+how their brightness changes (stage lighting, flashes) and compares that with where sound placed
+them. On two stadium concerts, giving each clip a single delay explains every pair to within 15 ms
+and 50 ms, so the placement itself is accurate to about a third of a frame.
+
+**Sound takes time to arrive.** Those per-clip delays are real: at a stadium show the phones were
+up to 423 ms apart in *when they heard* the music, which is 2.9 ms per metre of distance from the
+speakers. Sync lines up what each phone heard, so a phone standing further back has its picture
+placed that late — up to 12 frames. Aligning the pictures instead is the next piece of work.
+
 **Different nights, same song.** Bands play along to backing tracks that are identical every night,
 so clips of the same song from two shows can match on the music alone. Sync checks that a match
 holds all through the overlap (the singing, talk, and crowd must line up too) and sets aside pairs
@@ -65,7 +75,8 @@ largest group is placed for now.
 
 **Known limits.** Sound that repeats exactly, like the same recorded song played twice, can match
 the wrong place when only two clips share it. A phone that moves while filming shifts its sound by
-about 3 ms per metre. Edited uploads (with cuts) can't be placed as one clip. Clips without usable
+about 3 ms per metre, and phones at different distances are placed by when they heard the event
+rather than when it happened. Edited uploads (with cuts) can't be placed as one clip. Clips without usable
 sound can't be placed yet.
 
 `scenefold evaluate <event> <truth.json>` measures sync error against ground truth: moments such as
@@ -193,6 +204,7 @@ uv run ruff format src tests tools
 uv run ruff check src tests tools
 node --test web/tests/sync.test.mjs                               # the viewer's timing rules
 uv run --with playwright python tools/check_viewer.py my-event   # viewer sync, in headless Chrome
+uv run python tools/check_pictures.py my-event                   # sync checked on the pictures alone
 ```
 
 The maintainer's clones use a commit guard that only accepts the maintainer's GitHub identity:

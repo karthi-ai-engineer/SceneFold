@@ -52,7 +52,7 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 262 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 267 passed, 1 xfailed (the known chorus limit)
 node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+)
 ```
 
@@ -67,14 +67,14 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 
 ---
 
-## Where things stand (session 4, 2026-09-19)
+## Where things stand (session 6, 2026-09-20)
 
 | Phase | Status | Where |
 |---|---|---|
 | 0 Foundation | Done | `main` |
 | 1 Ingest | Done; checked on 12 real Jiku phone clips; sound now follows file timestamps | `main` |
 | 2 Sync | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines | `main` (merged from `phase-2-sync`) |
-| 3 Synced viewer | **In progress**: `scenefold view` works; every picture within half a frame on real clips | branch `phase-3-viewer` (not merged) |
+| 3 Synced viewer | **In progress**: `scenefold view` works; every picture within half a frame, and the placement checked on the pictures alone | branch `phase-3-viewer` (not merged) |
 | 4–9 | Not started | |
 
 - Results and findings: `docs/ROADMAP.md`, Phase 2 "Progress". In short: on two real Jiku subsets,
@@ -94,18 +94,22 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 ### Next steps, in order
 
 1. **Finish Phase 3** on `phase-3-viewer` (ROADMAP Phase 3 "Progress" lists what is done):
-   - Run `scenefold view` and `tools/check_viewer.py` on the Windows i5 laptop (no dedicated GPU),
-     with 4+ clips: the Done-when asks for sync on such a laptop.
-   - **Home clap recording (Karthi).** ~1 minute, 2–3 phones, a visible sharp clap at the start and
-     the end, some walking. `scenefold ingest`, `sync`, `evaluate` with the clap times (README), then
-     step through the claps frame by frame in the viewer: the first check of picture sync.
-   - **Nexus S check:** in `jiku-saf-long`, find a moment both seen and heard (a light cue or a hit)
-     and step through it in the viewer to see whether the Nexus S or the ground truth is right.
-   - README GIF from consenting footage (the home recording, not Jiku: real people), tag `v0.1.0`,
-     then PR `phase-3-viewer` → `main`, fast-forward merge once CI is green.
-2. ~~Reject pairs whose windows disagree~~ **Done (session 5):** `partial_match` (ROADMAP Phase 2).
+   - README GIF from consenting footage (not Jiku or YouTube: real people). The generated test clips
+     from `tests/synth.py` are the safe source; record the viewer playing them.
+   - Tag `v0.1.0`, then PR `phase-3-viewer` → `main`, fast-forward merge once CI is green.
+   - Done in session 6: the laptop-without-GPU item was dropped (that laptop is gone, and the viewer
+     decodes in software anyway), and the picture check replaced the home clap recording.
+     The Nexus S check failed for want of a signal: Jiku's lighting is steady, so no pair's
+     brightness matched clearly. It stays open; it would need a visible, audible moment (a hit or a
+     light cue) found by hand in `jiku-saf-long`.
+2. **Then: place the pictures, not the sound arrival** (ROADMAP Phase 2, "Next in sync"). The
+   picture check found phones up to 423 ms apart in when they heard the same stadium show, which is
+   how far they stood from the speakers (2.9 ms per metre). `tools/check_pictures.py` already
+   measures it; the work is to fold it into sync, `timeline.json`, and the viewer, and to keep
+   sound alignment available for listening.
+3. ~~Reject pairs whose windows disagree~~ **Done (session 5):** `partial_match` (ROADMAP Phase 2).
    Watch it on new footage: a true pair with a moving phone or an edit can fall under 0.9 too.
-3. Later (not Phase 3): place several groups (one per night or moment) instead of only the main
+4. Later (not Phase 3): place several groups (one per night or moment) instead of only the main
    one; detect edits (cuts) inside uploaded clips; a solver that weighs several candidate lags per
    pair would fix the repeated chorus case (strict xfail test in `tests/test_sync.py`). With more than 6 clips, Chrome's limit
    of 6 connections per host may queue video loading; check on a bigger event.
@@ -278,3 +282,22 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    after a 32 s clip bridged the nights. The mixed Coldplay set now splits; nothing else changed.
 2. The viewer's sync report shows each pair's agreement; unplaced clips that matched each other get
    an honest reason. Agreement samples at most 24 windows (cost: ~1 s for a 10-minute pair).
+
+### Session 6: 2026-09-20, Acer Predator
+
+1. **Checked sync on the pictures** (`tools/check_pictures.py`, new). It never listens: it reads each
+   working copy's brightness frame by frame, removes slow changes, and matches the curves of every
+   placed pair ±2 s around their sound lag. Two measures had to be fixed before it said anything —
+   brightness changes slowly, so a match must be judged against lags more than 5 s away (4σ), not
+   against its own broad peak, and the search runs as one FFT correlation instead of a loop.
+2. **Result: the placement is right, and the sound arrives late from far away.** On both Coldplay
+   nights every pair matched clearly (4.6–7.4σ), but pictures sat up to 269 ms (Jan 26) and 423 ms
+   (Jan 25) from where sound put them, consistently per clip. One delay per clip explains all pairs
+   to within 15 ms and 50 ms — so the matching scatters by a third of a frame and the rest is
+   distance: 2.9 ms per metre, i.e. phones 0–91 m and 0–145 m apart from the speakers. Sound-based
+   sync lines up when each phone *heard* the event. Numbers and the plan: ROADMAP Phase 3 "Picture
+   check" and Phase 2 "Next in sync".
+3. **Nexus S: still open.** Jiku's lighting is steady, so no pair reached 3σ and best lags scattered
+   by ±2 s. Brightness can't settle it; it needs a moment both seen and heard, found by hand.
+4. Dropped the Phase 3 "laptop without a dedicated GPU" item: that borrowed laptop is gone, Karthi
+   has only the Predator, and the viewer decodes 720p in software either way.

@@ -12,7 +12,7 @@ Last updated: 2026-09-17
 | 0 | Foundation | — | 1 | Done |
 | 1 | Ingest | 1 | 1 | Done; checked on 12 real phone clips (sound now follows the file timestamps) |
 | 2 | Sync | 2 | 1–2 | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines |
-| 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | In progress: viewer works, every picture within half a frame on real clips; laptop test, visual checks, GIF left |
+| 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | In progress: viewer works, pictures checked against the sound on real clips; GIF and tag left |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Not started |
 | 5 | Clip understanding | 4 | 2 | Not started |
 | 6 | Event knowledge + conflicts | 6, 8 | 2 | Not started |
@@ -239,6 +239,16 @@ The claps give ground truth for sync error and clock drift.
 - Done 2026-09-19: every "Done when" item is met. The home clap recording and the Nexus S check test
   picture sync, which the Phase 3 viewer makes easy to see, so they moved there.
 
+**Next in sync, after v0.1.0: place the pictures, not the sound arrival.** The Phase 3 picture check
+showed phones at one stadium show sitting up to 423 ms apart in when they heard the event, so
+sound-based offsets put their pictures that far out (below, Phase 3). Plan: measure each clip's
+brightness curve during sync, match placed pairs around their sound lag, and solve one delay per
+clip (this is `tools/check_pictures.py`, which already does it as a check). Then `timeline.json`
+carries `heard_late_ms` per clip, `scenefold sync` reports it as distance, and the viewer can show
+the event instead of its sound. Keep both: sound alignment is what you want when listening to one
+clip, picture alignment is what you want when watching several. It only works where something
+visibly changes together (stage lighting), so it must stay optional and say when it has no answer.
+
 ---
 
 ## Phase 3: Synced viewer + sync report → v0.1.0
@@ -254,13 +264,16 @@ The claps give ground truth for sync error and clock drift.
 - Seeking: pause all → seek all → wait until every video reports `seeked` → play together.
 - One audio track at a time, selectable.
 - Sync report page: pair graph, offsets, confidence, rejected pairs.
-- Visual sync checks (carried from Phase 2): the home clap recording with `scenefold evaluate`, and
-  for `jiku-saf-long`, a moment both seen and heard by the Nexus S and another phone, to settle its
-  70–110 ms disagreement with the published ground truth.
+- Visual sync checks (carried from Phase 2): match the clips by their pictures alone and compare
+  with where sound put them (`tools/check_pictures.py`), including `jiku-saf-long`, to settle the
+  Nexus S's 70–110 ms disagreement with the published ground truth.
 
 **Done when**
-- 4 clips at 720p play in sync on a laptop without a dedicated GPU, drift measured under one frame.
+- 4 clips at 720p play in sync, drift measured under one frame.
+  (Dropped 2026-09-20: "on a laptop without a dedicated GPU". The borrowed i5 laptop is gone and
+  Karthi has only the Predator; the viewer decodes 720p in software, so this was never a GPU test.)
 - Scrubbing and seeking never leave videos out of sync.
+- The pictures are checked against the sound, not only the sound against itself.
 - README shows a GIF of the viewer; tag `v0.1.0`; first progress post.
 
 **Progress (2026-09-19)**
@@ -288,9 +301,40 @@ The claps give ground truth for sync error and clock drift.
     instead, and the pictures start only once its sound is moving.
   - A clip that starts recording mid-playback waits on its first frame and is started a learned
     moment early (a paused video needs ~60 ms to get going).
-- Left: run it on a laptop without a dedicated GPU (the Windows i5 laptop); the visual sync checks
-  (home clap recording, Nexus S); a README GIF from consenting footage (the Jiku clips show real
-  people, so not those); tag `v0.1.0`.
+**Picture check (2026-09-20): sync is right, and the sound arrives late from far away**
+
+`tools/check_pictures.py` never listens. It reads how bright each working copy is frame by frame
+(stage lighting, flashes), removes slow changes, and matches those curves for every placed pair,
+searching ±2 s around where sound put them. A match counts when its peak stands 4 standard
+deviations above lags more than 5 s away, where nothing should line up.
+
+On the Coldplay sets every pair matched clearly (4.6–7.4σ), but the pictures did not sit where the
+sound put them: up to 269 ms out on Jan 26 and 423 ms on Jan 25, always in one direction per clip.
+Giving each clip a single delay explains every pair to within 15 ms (Jan 26, median 9 ms) and 50 ms
+(Jan 25, median 11 ms). So the picture matching itself is accurate to about a third of a frame —
+the timeline, drift, and viewer chain is right — and the spread is one number per phone:
+
+| Jan 26 | delay | Jan 25 | delay |
+|---|---|---|---|
+| Gareth Sequeira | 0 ms | Figments of Imagination | 0 ms |
+| Jyoti Malik | +38 ms | Sayan Santra | +195 ms |
+| Dharm Bharodiya | +49 ms | Sachin Jacob | +204 ms |
+| Adrit Girish | +94 ms | sam | +309 ms |
+| Somnath Das | +264 ms | Promit Dey | +338 ms |
+| | | nishant parekh | +422 ms |
+
+That is the speed of sound: 2.9 ms per metre, so these phones stood 0–91 m and 0–145 m apart in
+their distance from the speakers — ordinary for a stadium holding 130,000 people. **Sound-based sync
+lines up when each phone *heard* the event, not when it happened.** Any phone further from the
+speakers has its picture placed late by its distance, up to 12 frames here. (Delay towers and an
+uploader's own audio shift would look the same; the per-clip fit only shows it is one number per
+clip.) Aligning pictures instead is the first item after Phase 3.
+
+Jiku cannot be checked this way: its lighting is steady, so no pair reached 3σ and the best lags
+scattered by ±2 s. The Nexus S question stays open.
+
+- Left: a README GIF from consenting footage (the Jiku and YouTube clips show real people, so not
+  those); tag `v0.1.0`.
 
 ---
 
