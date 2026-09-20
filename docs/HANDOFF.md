@@ -310,3 +310,8 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    downloads separately, so it takes pictures instead and plays them back at the rate they came.
    Decision: generated media stays out of the repo, but this one GIF is documentation (like
    `docs/scenefold.png`) and the Phase 3 "Done when" asks for it.
+7. **Phase 3 closed:** CI green, `phase-3-viewer` fast-forwarded into `main`, tagged `v0.1.0`, branch
+   deleted. `docs/simulation.html` gained section 9 ("Sound takes time to arrive") and the published
+   artifact was updated to match.
+8. Not done, and worth knowing: no progress post has been written for v0.1.0 (the roadmap's Phase 3
+   asks for one), and nothing was published outside the repo.
