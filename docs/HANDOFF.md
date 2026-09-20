@@ -349,3 +349,5 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
     processes running, and passed on the 4-clip demo. It fails the same way in sound alignment and
     on `jiku-saf-long`, which has no distances at all, so it is decoding starved of CPU, not a
     regression. Re-run it on an idle machine before trusting a red result.
+15. Phase 2b merged into `main` (CI green) and the branch deleted. 291 tests pass, plus 15 viewer
+    timing tests. No version tag: v0.1.0 stands until the next milestone phase.
