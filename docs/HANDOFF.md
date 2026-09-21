@@ -80,7 +80,7 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 | 6 Event knowledge | Done: `scenefold fuse` merges the clips into events with evidence, and finds disagreements twice over (arithmetic, then the model reading the accounts) | `main` |
 | 7 Story + Q&A | Built: `scenefold story` and `scenefold ask`, every sentence checked in code against the footage. **`v0.5.0` not tagged** — it waits on somebody watching footage they know and saying whether the sentences are true | `main` |
 | 8 Cross-angle identity | Built: `scenefold people` + `scenefold identify` match people by what the clips say they are wearing, and say when the descriptions cannot be trusted. Whether each match is the *right* person is not measured | `main` (merged from `phase-8-identity`) |
-| 9 Smart cut + release | Built: the cut reads the event store, the viewer shows every disagreement, the README carries the numbers. **`v1.0.0` withheld** until somebody can check the story, the disagreements and the identities against an event they know | `phase-9-smart-cut` |
+| 9 Smart cut + release | Built: the cut reads the event store, the viewer shows every disagreement, the README carries the numbers. **`v1.0.0` withheld** until somebody can check the story, the disagreements and the identities against an event they know | `main` (merged from `phase-9-smart-cut`) |
 
 - Results and findings: `docs/ROADMAP.md`, Phase 2 "Progress". In short: on two real Jiku subsets,
   5 of 6 phones agree with the published ground truth within 6.4 ms (174 s overlaps) and 26 ms

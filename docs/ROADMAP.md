@@ -19,7 +19,7 @@ Last updated: 2026-09-21
 | 6 | Event knowledge + conflicts | 6, 8 | 2 | Done: clips merged into events with evidence, and disagreements found twice over |
 | 7 | Story + Q&A → **v0.5.0** | 7, 10 | 1–2 | Built: cited story and questions, every sentence checked in code. Tag held back until faithfulness is checked by hand |
 | 8 | Cross-angle identity | 5 | 2–3 | Built and merged: matching from what the clips say people are wearing, no new dependency. Accuracy on real footage waits on a hand-labelled event |
-| 9 | Smart cut + release → **v1.0.0** | 9 | 2 | Built: the cut reads the event store, the viewer shows every disagreement, the README carries the numbers. Tag withheld until the hand-labelled event exists |
+| 9 | Smart cut + release → **v1.0.0** | 9 | 2 | Built: the cut reads the event store, the viewer shows every disagreement, the README carries the numbers. Tag withheld until the hand-labelled event exists (merged to `main`) |
 
 **Why this order differs from the brief's roadmap:** identity (Phase 8) is the riskiest, most research-heavy part.
 The story and disagreement features can work first with the AI's own descriptions ("person in red"), so a full
