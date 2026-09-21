@@ -16,6 +16,7 @@
     <nav class="tabs" role="tablist">
       <button role="tab" id="tab-viewer" aria-selected="true" aria-controls="viewer">Viewer</button>
       <button role="tab" id="tab-report" aria-selected="false" aria-controls="report">Sync report</button>
+      <button role="tab" id="tab-film" aria-selected="false" aria-controls="film">Film</button>
     </nav>
   </header>
 
@@ -71,6 +72,20 @@
         <div class="table-wrap"><table id="clip-table"></table></div>
       </div>
       <div class="table-wrap"><table id="pair-table"></table></div>
+    </section>
+
+    <section id="film" role="tabpanel" aria-labelledby="tab-film" hidden>
+      <p id="film-note" class="muted">Loading the film…</p>
+      <div id="film-grid" class="film-grid" hidden>
+        <div class="film-stage">
+          <video id="film-video" controls preload="metadata" playsinline></video>
+          <p id="film-about" class="muted small"></p>
+        </div>
+        <div class="shots">
+          <h2>Shots <span id="shot-count" class="muted"></span></h2>
+          <ol id="shot-list" class="shot-list"></ol>
+        </div>
+      </div>
     </section>
   </main>
 

@@ -14,6 +14,7 @@ import pytest
 
 from scenefold import view
 from scenefold.cli import main
+from scenefold.cut import FILM_NAME, ONLY_ANGLE, CutSettings, Film, Shot, save_cut
 from scenefold.manifest import (
     Clip,
     ClipStatus,
@@ -34,6 +35,8 @@ ESCAPING_ID = "eeeeeeeeeeee"  # a manifest entry pointing outside the event fold
 VIDEO = bytes(range(256)) * 1000  # every byte tells where it sits, so ranges can be checked
 SIZE = len(VIDEO)
 VIDEO_URL = f"/media/{CLIP_ID}.mp4"
+FILM = bytes(range(256)) * 400  # the finished cut, likewise
+FILM_SIZE = len(FILM)
 PAGE = "<!doctype html><title>Scenefold viewer · 視聴</title>"
 SCRIPT = "export const clock = 0;"
 
@@ -93,6 +96,36 @@ def workspace(tmp_path) -> Path:
     )
     save_timeline(event_dir, timeline)
     return event_dir
+
+
+@pytest.fixture
+def film(workspace) -> Film:
+    """The same event once it has been cut: cut.json and a film of known bytes."""
+    cut = Film(
+        event_id=EVENT,
+        created_at=now(),
+        settings=CutSettings(),
+        duration_s=10.0,
+        start_s=0.0,
+        audio_clip_id=CLIP_ID,
+        audio_reason="the only clip on the clock",
+        audio_end_s=10.0,
+        shots=[
+            Shot(
+                clip_id=CLIP_ID,
+                name="a.mp4",
+                start_s=0.0,
+                end_s=10.0,
+                local_start_s=0.0,
+                local_end_s=10.0,
+                score=0.5,
+                reason=ONLY_ANGLE,
+            )
+        ],
+    )
+    save_cut(workspace, cut)
+    (workspace / FILM_NAME).write_bytes(FILM)
+    return cut
 
 
 @pytest.fixture
@@ -328,6 +361,56 @@ def test_a_working_video_missing_on_disk_says_to_ingest_again(viewer, workspace)
     status, _, body = fetch(viewer, VIDEO_URL)
     assert status == 404
     assert "scenefold ingest" in error_of(body)
+
+
+def test_the_cut_and_the_film_are_served_as_written(viewer, film, workspace):
+    status, headers, body = fetch(viewer, "/api/cut")
+    assert status == 200
+    assert headers["Content-Type"] == "application/json"
+    assert body == (workspace / "cut.json").read_bytes()
+    assert json.loads(body)["shots"][0]["reason"] == ONLY_ANGLE
+
+    status, headers, body = fetch(viewer, "/film.mp4")
+    assert status == 200
+    assert headers["Content-Type"] == "video/mp4"
+    assert headers["Accept-Ranges"] == "bytes"
+    assert int(headers["Content-Length"]) == FILM_SIZE
+    assert body == FILM
+
+
+@pytest.mark.parametrize(
+    ("asked", "first", "last"),
+    [
+        ("bytes=0-99", 0, 99),
+        ("bytes=1000-", 1000, FILM_SIZE - 1),
+        ("bytes=-400", FILM_SIZE - 400, FILM_SIZE - 1),
+    ],
+)
+def test_the_film_can_be_seeked_like_a_clip(viewer, film, asked, first, last):
+    status, headers, body = fetch(viewer, "/film.mp4", headers={"Range": asked})
+    assert status == 206
+    assert headers["Content-Range"] == f"bytes {first}-{last}/{FILM_SIZE}"
+    assert body == FILM[first : last + 1]
+
+    status, headers, body = fetch(viewer, "/film.mp4", "HEAD", {"Range": asked})
+    assert (status, body) == (206, b"")
+    assert headers["Content-Length"] == str(last - first + 1)
+
+
+def test_an_event_that_was_never_cut_says_so(viewer):
+    for path in ("/api/cut", "/film.mp4"):
+        status, headers, body = fetch(viewer, path)
+        assert status == 404, path
+        assert headers["Content-Type"] == "application/json"
+        assert "scenefold cut" in error_of(body), path
+
+
+def test_a_cut_without_its_film_still_serves_the_shot_list(viewer, film, workspace):
+    (workspace / FILM_NAME).unlink()
+    assert fetch(viewer, "/api/cut")[0] == 200
+    status, _, body = fetch(viewer, "/film.mp4")
+    assert status == 404
+    assert "no film yet" in error_of(body)
 
 
 def test_the_viewer_needs_a_synced_event(workspace, web):

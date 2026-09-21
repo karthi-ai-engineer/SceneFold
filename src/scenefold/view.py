@@ -7,8 +7,10 @@
                                 .png .ico); nothing outside that folder
     GET /api/timeline           data/<event>/timeline.json, as `scenefold sync` wrote it
     GET /api/manifest           data/<event>/manifest.json, as `scenefold ingest` wrote it
+    GET /api/cut                data/<event>/cut.json, the shot list `scenefold cut` wrote
     GET /media/<clip_id>.mp4    that clip's working video, with Range support so the browser can
                                 seek
+    GET /film.mp4               data/<event>/cut.mp4, the finished film, with the same Range support
 
 Files are read again on every request, so running sync again shows up when the page reloads.
 Anything that isn't there gets a 404 whose body explains why: {"error": "<plain explanation>"}.
@@ -28,6 +30,7 @@ from pathlib import Path
 from typing import BinaryIO
 from urllib.parse import unquote, urlsplit
 
+from scenefold.cut import CUT_NAME, FILM_NAME
 from scenefold.manifest import MANIFEST_NAME, ManifestError, load_manifest, normalize_event_id
 from scenefold.timeline import TIMELINE_NAME, TimelineError, load_timeline
 
@@ -50,7 +53,10 @@ CONTENT_TYPES = {
 API_FILES = {  # route -> (file in the event folder, the command that writes it)
     "/api/timeline": (TIMELINE_NAME, "scenefold sync"),
     "/api/manifest": (MANIFEST_NAME, "scenefold ingest"),
+    "/api/cut": (CUT_NAME, "scenefold cut"),
 }
+# The film is one video of the whole event, not one clip, so it gets a name of its own.
+FILM_PATH = "/film.mp4"
 
 _MEDIA_PATH = re.compile(r"/media/([0-9a-f]{12})\.mp4")
 _BYTE_RANGE = re.compile(r"\s*bytes\s*=\s*(\d*)\s*-\s*(\d*)\s*", re.IGNORECASE)
@@ -182,8 +188,11 @@ class _Handler(BaseHTTPRequestHandler):
                 if match is None:
                     raise _NotFound(f"{path} is not a clip video; use /media/<clip_id>.mp4")
                 self._send_video(_clip_video(self.server.event_dir, match.group(1)))
+            elif path == FILM_PATH:
+                film = self.server.event_dir / FILM_NAME
+                self._send_video(film, "this event has no film yet; run `scenefold cut`")
             elif path.startswith("/api/"):
-                raise _NotFound(f"there is no {path}; try /api/timeline or /api/manifest")
+                raise _NotFound(f"there is no {path}; try /api/timeline, /api/manifest or /api/cut")
             else:
                 file = _static_file(self.server.web_dir, path)
                 missing = f"the viewer has no file at {path}"
@@ -204,11 +213,11 @@ class _Handler(BaseHTTPRequestHandler):
         self._start(HTTPStatus.OK, content_type, len(body))
         self._write(body)
 
-    def _send_video(self, video: Path) -> None:
+    def _send_video(self, video: Path, missing: str | None = None) -> None:
         try:
             file = video.open("rb")
         except OSError as exc:
-            raise _NotFound(f"cannot open {video.name}: {exc.strerror}") from exc
+            raise _NotFound(missing or f"cannot open {video.name}: {exc.strerror}") from exc
         with file:
             size = os.fstat(file.fileno()).st_size
             headers = {"Accept-Ranges": "bytes"}

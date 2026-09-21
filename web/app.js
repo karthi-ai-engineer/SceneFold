@@ -8,6 +8,7 @@
 
 import * as sync from "./sync.js";
 import { renderReport } from "./report.js";
+import { loadFilm, startFilm } from "./film.js";
 
 // categorical colors in fixed order (validated palette, dark steps); a 9th clip and beyond stay grey
 export const COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];
@@ -15,6 +16,7 @@ export const OTHER = "#8f8e88";
 // After a start or jump, videos begin at slightly different moments and catch up within about a
 // second (measured); the health table reports how well they then stay together.
 const START_GRACE_MS = 1000;
+const TABS = ["viewer", "report", "film"];
 const FIRST_LEAD_S = 0.3; // a jump while playing aims this far ahead until the clip's own is known
 
 const $ = (id) => document.getElementById(id);
@@ -51,8 +53,7 @@ async function fetchJson(url) {
   return body;
 }
 
-function makeClip(placement, index) {
-  const color = COLORS[index] ?? OTHER;
+function makeClip(placement, color) {
   const video = document.createElement("video");
   Object.assign(video, { preload: "auto", muted: true, playsInline: true, disablePictureInPicture: true });
   video.src = `/media/${placement.clip_id}.mp4`;
@@ -435,16 +436,24 @@ function bindControls() {
   $("speed").addEventListener("change", (event) => setSpeed(Number(event.target.value)));
   $("audio").addEventListener("change", (event) => setAudio(event.target.value || null));
   $("align").addEventListener("change", (event) => setAlign(event.target.value));
-  for (const tab of ["viewer", "report"]) {
+  for (const tab of TABS) {
     $(`tab-${tab}`).addEventListener("click", () => {
-      for (const other of ["viewer", "report"]) {
+      for (const other of TABS) {
         $(other).hidden = other !== tab;
         $(`tab-${other}`).setAttribute("aria-selected", String(other === tab));
+      }
+      // one sound at a time: the film and the clips both have some
+      if (tab === "film") {
+        pause();
+        startFilm(); // the film itself is only fetched once someone wants to watch it
+      } else {
+        $("film-video").pause();
       }
     });
   }
   document.addEventListener("keydown", (event) => {
     if (event.target.closest("select, input, textarea") || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (!$("film").hidden) return; // the film has its own controls; these keys drive the clips
     const keys = {
       " ": () => (state.playing ? pause() : play()),
       ArrowLeft: () => seekTo(state.clock.time() - 5),
@@ -469,14 +478,18 @@ async function boot() {
     return;
   }
   state.timeline = timeline;
-  state.clips = timeline.clips.filter((c) => c.placed).map(makeClip);
+  const placed = timeline.clips.filter((c) => c.placed);
+  const colorOf = Object.fromEntries(placed.map((c, i) => [c.clip_id, COLORS[i] ?? OTHER]));
+  // Ask for the shot list before the clips' videos do, because they hold every connection the
+  // browser allows to one site (six in Chrome) for as long as they are loading.
+  loadFilm(timeline, colorOf, OTHER);
+  state.clips = placed.map((c) => makeClip(c, colorOf[c.clip_id]));
   state.unplaced = timeline.clips.filter((c) => !c.placed);
   // Watching several clips is the whole point of this page, so start on the pictures whenever sync
   // worked out how late each phone heard the event; otherwise there is nothing to choose between.
   const knowsDistance = state.clips.some((c) => (c.heard_late_s ?? null) !== null);
   state.align = knowsDistance ? sync.PICTURES : sync.SOUND;
   state.span = sync.span(state.clips, state.align);
-  const colorOf = Object.fromEntries(state.clips.map((c) => [c.clip_id, c.color]));
 
   document.title = `${timeline.event_id} · Scenefold Viewer`;
   $("event-name").textContent = timeline.event_id;

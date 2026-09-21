@@ -52,7 +52,7 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 286 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 316 passed, 1 xfailed (the known chorus limit)
 node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+)
 ```
 
@@ -374,3 +374,7 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    caller simply stopped early.
 6. `docs/simulation.html` gained section 10, which runs the same shot-planning rules on invented
    scores with dials for the cut cost and the shortest shot.
+7. The viewer gained a **Film** tab (plays `cut.mp4`, shot list with reasons, click to jump);
+   `view.py` serves `/api/cut` and `/film.mp4`. Watch the connection limit: Chrome allows about six
+   per site and the clip videos hold them all, so the film's own data is fetched only when someone
+   opens the tab. 316 tests pass, plus 15 viewer timing tests.

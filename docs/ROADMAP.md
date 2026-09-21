@@ -3,7 +3,7 @@
 We build Scenefold one phase at a time. Each phase ends with something that runs, is tested, and is measured.
 The vision and firm principles live in [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md). This file covers **what to build next** and **when a phase counts as done**.
 
-Last updated: 2026-09-20
+Last updated: 2026-09-21
 
 ## Status
 
@@ -14,7 +14,7 @@ Last updated: 2026-09-20
 | 2 | Sync | 2 | 1–2 | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines |
 | 2b | Place the pictures, not the sound arrival | 2 | ~1 | Done: measured in sync, and the viewer can hold the pictures together |
 | 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Done: viewer within half a frame, checked on the pictures too, demo event and README GIF |
-| 4 | Quality cut (no AI) | 9 (basic) | 1 | In progress: `scenefold cut` scores, chooses shots, and renders the film |
+| 4 | Quality cut (no AI) | 9 (basic) | 1 | Done: `scenefold cut` scores, chooses shots, renders the film, and the viewer plays it |
 | 5 | Clip understanding | 4 | 2 | Not started |
 | 6 | Event knowledge + conflicts | 6, 8 | 2 | Not started |
 | 7 | Story + Q&A → **v0.5.0** | 7, 10 | 1–2 | Not started |
@@ -414,6 +414,14 @@ were checked against the sound, and the README shows the viewer. Tagged `v0.1.0`
 - On `coldplay-jan26` (5 clips, 5:08 of film) it chose 13 shots from 3 to 63 seconds with varied
   reasons, taking 51 s to look at 20 minutes of footage. On the drawn demo event the clock burnt
   into the picture reads 30.467 s at 30 s into the film: the shots land on the right frames.
+- **Watching it:** the viewer has a third tab, Film, which plays `cut.mp4` with the shot list
+  beside it, highlighting the shot on screen and why it was chosen; clicking a shot jumps there.
+  `view.py` serves `/api/cut` and `/film.mp4` (the same Range support as the clips). The shot list
+  is fetched at start-up and the film itself only when the tab is opened: a browser allows about
+  six connections to one site and the clips hold them all while they load, which had left the tab
+  waiting 15 s on a six-clip event.
+- Left for this phase: nothing in the "Done when" list. Remaining ideas, not required: a cut that
+  can use footage outside the microphone clip's span, and shot lengths that follow the music.
 
 ---
 
