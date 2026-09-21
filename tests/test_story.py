@@ -9,6 +9,8 @@ from scenefold.story import (
     Line,
     Story,
     StoryError,
+    about,
+    answer_question,
     as_moments,
     check_citations,
     load_story,
@@ -85,7 +87,7 @@ def test_every_sentence_keeps_the_footage_behind_it():
         events, "pretend", answers("The lights drop. [1] Then confetti falls. [2]")
     )
 
-    assert [line.text for line in lines] == ["The lights drop.", "Then confetti falls."]
+    assert [line.text for line in lines] == ["The lights drop. [1]", "Then confetti falls. [1]"]
     assert lines[0].cites == ["e-001"] and lines[0].clips == ["a", "b"]
     assert lines[1].t_master_s == 40.0
     assert dropped == []
@@ -118,7 +120,7 @@ def test_one_sentence_written_twice_becomes_one_line():
 
     lines, _ = write_story(events, "pretend", answers("The same view. [1] The same view. [2]"))
 
-    assert len(lines) == 1
+    assert len(lines) == 1  # both moments are told by one sentence, citing each
     assert lines[0].cites == ["e-001", "e-002"]
     assert lines[0].clips == ["a", "b"]
 
@@ -195,3 +197,85 @@ def test_an_unreadable_story_says_so(tmp_path):
 
 def test_nothing_known_means_nothing_told():
     assert write_story([], "pretend", answers("anything at all [1]")) == ([], [])
+
+
+def test_a_question_reaches_the_moments_that_mention_it():
+    events = [
+        happened(1, 10.0, "the crowd holds up lights"),
+        happened(2, 50.0, "confetti falls over everyone"),
+        happened(3, 90.0, "a dark empty stage"),
+    ]
+
+    chosen = about(events, "when did the confetti fall?")
+
+    assert chosen[0].event_id == "e-002"
+
+
+def test_a_question_matching_nothing_still_gets_the_whole_event():
+    """'What happened?' shares no words with anything, and must not therefore get nothing."""
+    events = [happened(i, i * 10.0, "a flash") for i in range(1, 6)]
+
+    chosen = about(events, "what happened?")
+
+    assert len(chosen) == 5
+
+
+def test_an_answer_cites_the_footage_behind_it():
+    events = [happened(1, 30.0, "confetti falls", clips=("a", "b"))]
+
+    lines, dropped = answer_question(
+        events, "was there confetti?", answers("Yes, confetti fell over the crowd. [1]")
+    )
+
+    assert lines[0].text == "Yes, confetti fell over the crowd. [1]"
+    assert lines[0].cites == ["e-001"] and lines[0].clips == ["a", "b"]
+    assert dropped == []
+
+
+def test_an_answer_the_footage_cannot_support_is_thrown_away():
+    events = [happened(1, 30.0, "confetti falls")]
+
+    lines, dropped = answer_question(
+        events, "how many people were there?", answers("About five thousand people were there.")
+    )
+
+    assert lines == []
+    assert "points at no moment" in dropped[0]
+
+
+def test_saying_the_footage_does_not_show_it_is_passed_on_as_it_is():
+    events = [happened(1, 30.0, "confetti falls")]
+
+    lines, dropped = answer_question(
+        events, "was anybody hurt?", answers("The footage does not show this.")
+    )
+
+    assert (lines, dropped) == ([], [])  # not an error and not a dropped sentence: an answer
+
+
+def test_taking_out_several_citations_does_not_leave_punctuation_behind():
+    """A model citing a list writes "the footage [3], [4] and [5]": the marks go, the words stay."""
+    events = [happened(n, n * 10.0, clips=("a",)) for n in range(1, 6)]
+
+    lines, _ = write_story(
+        events,
+        "pretend",
+        answers("Circular screens showed the performers [1], [2], [3] and [4]."),
+    )
+
+    assert lines[0].text == "Circular screens showed the performers [1], [2], [3] and [4]."
+    assert lines[0].cites == ["e-001", "e-002", "e-003", "e-004"]
+
+
+def test_an_answer_that_only_mentions_not_showing_still_counts():
+    """Mentioning the phrase is not the same as refusing: the sentence still cites a moment."""
+    events = [happened(1, 30.0, "screens showing the stage")]
+
+    lines, _ = answer_question(
+        events,
+        "what was on the screens?",
+        answers("The footage does not show this clearly, but screens are visible [1]."),
+    )
+
+    assert len(lines) == 1
+    assert lines[0].cites == ["e-001"]

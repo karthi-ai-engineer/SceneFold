@@ -155,6 +155,18 @@ That is the difference between a story about an event and a story that merely so
 that the model behaves, but that nothing reaches a reader without footage behind it. On the concert
 it kept 15 sentences, dropped none, and marked 4 as moments the clips disagreed about.
 
+`scenefold ask <event> "<question>"` answers from the same store, cited the same way — and says
+so when it cannot:
+
+```
+$ scenefold ask coldplay-jan26 "what were the crowd doing with their lights?"
+They used the lights to form thousands of glowing dots, seen from above. (the clips disagree here)
+  at 3:18.9, from 34b92d86, 60780912, eae777b3
+
+$ scenefold ask coldplay-jan26 "was anybody hurt in the crowd?"
+The footage does not show this.
+```
+
 **What this cannot check**: whether a sentence that cites a real moment describes it truthfully. A
 model can cite correctly and still embroider. That needs a person watching footage they know.
 

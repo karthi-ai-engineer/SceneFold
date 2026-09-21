@@ -578,7 +578,14 @@ comes from the picture score (`quality.py`), not from the model's opinion of its
   fragment is carried back; and two moments sharing one twelve-second description make the model
   write the same sentence twice, so identical neighbours are merged into one line with both
   citations.
-- Left in this phase: questions answered from the store, the panels in the viewer, and the tag.
+- **Questions (2026-09-21)**: `scenefold ask <event> "<question>"` answers from the same store
+  with the same checking. The moments handed over are the ones whose words the question shares;
+  where nothing matches, the account's own spread goes instead, so "what happened?" still reaches
+  the whole event. An answer the footage cannot support is dropped exactly as a story sentence is,
+  and "The footage does not show this." is passed on unchanged rather than treated as a failure.
+  On the concert it answered a question about the crowd's lights with a cited, disputed moment,
+  and refused "was anybody hurt in the crowd?" outright.
+- Left in this phase: the panels in the viewer, faithfulness checked by hand, and the tag.
 
 ---
 

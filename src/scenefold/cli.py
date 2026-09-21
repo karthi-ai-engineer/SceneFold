@@ -17,7 +17,7 @@ from scenefold.observations import OBSERVATIONS_DIR, SpeechSettings, WatchSettin
 from scenefold.observe import WatchError, observe_event
 from scenefold.picture_offset import metres
 from scenefold.speech import SpeechError
-from scenefold.story import STORY_NAME, StoryError, tell_event
+from scenefold.story import STORY_NAME, StoryError, ask_event, tell_event
 from scenefold.sync import SyncError, sync_event
 from scenefold.timeline import TIMELINE_NAME, ClipPlacement, Timeline
 from scenefold.view import DEFAULT_PORT, ViewError, serve
@@ -167,6 +167,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     story_parser.add_argument(
         "--model", default=WatchSettings().model, help="the model that writes it"
     )
+    ask_parser = commands.add_parser(
+        "ask",
+        help="ask a question about an event",
+        description="Answer a question from what the clips agreed on, citing the footage behind "
+        "every sentence. Says plainly when the footage does not show it.",
+    )
+    ask_parser.add_argument("event", help="event name used with fuse, e.g. match-01")
+    ask_parser.add_argument("question", help="what you want to know, in plain words")
+    ask_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="folder that holds event workspaces (default: ./data)",
+    )
+    ask_parser.add_argument("--model", default=WatchSettings().model, help="the model that answers")
     cut_parser = commands.add_parser(
         "cut",
         help="edit the angles into one film",
@@ -218,6 +233,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "observe": _run_observe,
         "fuse": _run_fuse,
         "story": _run_story,
+        "ask": _run_ask,
         "cut": _run_cut,
         "view": _run_view,
     }
@@ -423,6 +439,30 @@ def _run_story(args: argparse.Namespace) -> int:
         for reason in story.dropped[:3]:
             print(f"  {reason[:110]}")
     print(f"\nStory: {Path(args.data_dir) / story.event_id / STORY_NAME}")
+    return 0
+
+
+def _run_ask(args: argparse.Namespace) -> int:
+    try:
+        lines, dropped = ask_event(
+            args.event, args.question, data_dir=args.data_dir, model=args.model
+        )
+    except (StoryError, JudgeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if not lines:
+        print("The footage does not show this.")
+        if dropped:
+            print(f"  ({len(dropped)} sentence(s) left out for having nothing behind them)")
+        return 0
+    for line in lines:
+        minutes, rest = divmod(line.t_master_s, 60)
+        mark = " (the clips disagree here)" if line.disputed else ""
+        print(f"{line.text}{mark}")
+        clips = ", ".join(clip[:8] for clip in line.clips)
+        print(f"  at {int(minutes)}:{rest:04.1f}, from {clips}")
+    if dropped:
+        print(f"\nLeft out, having nothing behind it: {len(dropped)}")
     return 0
 
 
