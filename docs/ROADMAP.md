@@ -16,9 +16,9 @@ Last updated: 2026-09-21
 | 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Done: viewer within half a frame, checked on the pictures too, demo event and README GIF |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Done: `scenefold cut` scores, chooses shots, renders the film, and the viewer plays it |
 | 5 | Clip understanding | 4 | 2 | Done but for recall: watches, listens, and times the moments, all on this computer |
-| 6 | Event knowledge + conflicts | 6, 8 | 2 | In progress: clips merged into events with evidence and conflicts |
-| 7 | Story + Q&A → **v0.5.0** | 7, 10 | 1–2 | Not started |
-| 8 | Cross-angle identity | 5 | 2–3 | Not started |
+| 6 | Event knowledge + conflicts | 6, 8 | 2 | Done: clips merged into events with evidence, and disagreements found twice over |
+| 7 | Story + Q&A → **v0.5.0** | 7, 10 | 1–2 | Built: cited story and questions, every sentence checked in code. Tag held back until faithfulness is checked by hand |
+| 8 | Cross-angle identity | 5 | 2–3 | In progress: matching from what the clips say people are wearing, no new dependency |
 | 9 | Smart cut + release → **v1.0.0** | 9 | 2 | Not started |
 
 **Why this order differs from the brief's roadmap:** identity (Phase 8) is the riskiest, most research-heavy part.
@@ -595,15 +595,30 @@ comes from the picture score (`quality.py`), not from the model's opinion of its
 **Brief outcome:** 5 · **Runs on:** NVIDIA GPU machine preferred; OpenVINO on CPU as fallback
 
 **Steps**
-- Detect and track per clip → tracklets (the Phase 0 license decision picks the libraries).
-- Appearance embedding per tracklet (re-identification features averaged over the track).
-- Cross-camera matching: appearance + time co-occurrence on the synced clock + motion correlation →
-  similarity matrix → bipartite matching. "Unknown" is a valid result.
-- The VLM double-checks ambiguous pairs and explains its choice.
-- Re-run Phase 6 fusion with shared entities.
+- ~~Detect and track per clip~~ → the model already on this machine is asked who it can see, once
+  every few seconds (`scenefold people`). Sightings are clothing and position only: never faces,
+  never names, never anything measured off a body.
+- Tracklets per clip, by matching each window's sightings to the people already being followed.
+- Cross-camera matching: how alike the descriptions are + time co-occurrence on the synced clock →
+  similarity matrix → bipartite matching (`scipy.linear_sum_assignment`). "Unknown" is a valid result.
+- *(not done)* The VLM double-checks ambiguous pairs and explains its choice.
+- *(not done)* Re-run Phase 6 fusion with shared entities.
+
+**Why words before embeddings.** Before building anything, the local model was asked to describe
+people in the footage we have. On the Jiku stage clips it gave genuinely separating descriptions —
+"black sleeveless top and dark pants", "red sleeveless top" — and two phones filming the same
+second independently produced the same two, which is the whole signal this phase needs. On a wide
+Coldplay crowd shot it managed "dark clothing", which separates nobody. So the first version reads
+clothing out of words: no detector weights, no licence question, nothing to download, and it fails
+visibly rather than quietly where people are too small to describe. A detector plus a
+re-identification embedding is the better instrument and stays the plan; this is the version that
+could be measured this week.
 
 **Done when**
 - Matching accuracy is measured on a hand-labeled set; low-confidence matches show as unknown, never forced.
+  *Half met: the matching maths is measured on hand-written pairs (`tests/test_identity.py`), and
+  unmatched and unsure are both reported. Accuracy on real footage needs a filmed event where who is
+  who is known, which is the same hand-labelled event Phases 5 and 6 are waiting on.*
 
 **Time-box:** this is the research-heavy phase. If accuracy stalls, ship what works and document the limits.
 

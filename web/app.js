@@ -7,6 +7,7 @@
 // finished, and only then plays on.
 
 import * as sync from "./sync.js";
+import { loadPeople } from "./people.js";
 import { renderReport } from "./report.js";
 import { loadFilm, startFilm } from "./film.js";
 import { loadStory, openStory } from "./story.js";
@@ -516,6 +517,12 @@ async function boot() {
     $("tiles").innerHTML = `<p class="muted">No clip could be placed on the clock. See the sync report.</p>`;
   }
   renderReport(timeline, colorOf, OTHER);
+  // Who was matched across the angles, and the one click that checks a match: watch it.
+  loadPeople(timeline, colorOf, OTHER, (t) => {
+    showTab("viewer");
+    seekTo(t);
+    toast(`Jumped to ${sync.formatTime(t, 1)}`);
+  });
   bindControls();
 
   await Promise.all(state.clips.map((clip) => waitReady(clip.video)));

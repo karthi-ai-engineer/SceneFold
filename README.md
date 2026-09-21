@@ -170,6 +170,35 @@ The footage does not show this.
 **What this cannot check**: whether a sentence that cites a real moment describes it truthfully. A
 model can cite correctly and still embroider. That needs a person watching footage they know.
 
+## Who is who across angles
+
+`scenefold people <event>` asks the model, once every ten seconds, who it can make out in each clip
+and what they are wearing. `scenefold identify <event>` then joins those sightings up: first within
+a clip, so the red top in one window and the red top in the next are one person, then across clips
+on the shared clock, so the red top one phone filmed from the left is the red top another filmed
+from the right.
+
+Both joins are the same problem — a set of people here, a set there, at most one of each can be the
+other — and both are solved by optimal assignment rather than by taking the best-looking pair first.
+Two descriptions are scored on the colour-and-garment pairs in them ("red sleeveless top" → red top,
+sleeveless top), because those are what separate one person from the next; bare colours count for a
+quarter, since at a lit concert everybody is partly black.
+
+Three things it refuses to do:
+
+- **Force a match.** Somebody only one phone filmed stays one person seen from one angle. That is
+  the common case at a real event, not a failure.
+- **Pretend to be sure.** A join the words only half support is reported as worth checking.
+- **Match on nothing.** "A person", "dark clothing", "dark jeans" pick out half the event, so a
+  sighting described that way is dropped before any matching happens.
+
+**Known limits.** This reads clothing out of a small model's words, not out of the pixels. It works
+where people are large and lit — on stage footage the model gives descriptions two angles agree on
+by themselves — and finds nobody on a wide crowd shot, where it can only manage "dark clothing".
+Two people really can wear the same black t-shirt, and no description will ever separate them.
+Accuracy on real footage is not yet measured: that needs an event where who is who is known, which
+is the same hand-labelled event the observations are waiting on.
+
 ## What the cut does
 
 `scenefold cut <event>` edits the angles into one film, with no AI and no idea of what is being
@@ -417,6 +446,12 @@ data/            your events; never committed
 - Only use footage from people who agreed to be filmed.
 - Scenefold never modifies your original files; it works on copies.
 - Working copies have location and device metadata removed.
+- `scenefold people` writes down what people are wearing, so that the same person can be found in
+  another angle. It is clothing, what they are doing, and roughly where they stand — never faces,
+  never names, never anything measured off a body, and the model is told to refuse a name even
+  when one is written on the picture. It stays in `data/<event>/`, on your machine, with the
+  footage. It is meant to join two angles of one afternoon, not to identify a stranger, and it
+  should be deleted with the event.
 - Everything runs on your own machine; nothing is uploaded. Later phases may use cloud AI services;
   the plan is to make that a clear choice and to offer face blurring first.
 

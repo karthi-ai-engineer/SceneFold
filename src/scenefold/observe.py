@@ -88,14 +88,18 @@ class Ollama:
         return self.model
 
     def describe(self, pictures: list[bytes]) -> dict:
+        return self.ask(pictures, ASK, ANSWER)
+
+    def ask(self, pictures: list[bytes], prompt: str, shape: dict, warmth: float = 0.2) -> dict:
+        """Put one question about some pictures to the model, and hold it to an answer shape."""
         body = json.dumps({
             "model": self.model,
-            "prompt": ASK,
+            "prompt": prompt,
             "images": [b64encode(picture).decode() for picture in pictures],
-            "format": ANSWER,
+            "format": shape,
             "stream": False,
             "think": False,  # this model can think out loud; it is slower and adds nothing here
-            "options": {"temperature": 0.2},
+            "options": {"temperature": warmth},
         }).encode()  # fmt: skip
         request = urllib.request.Request(
             f"{self.host}/api/generate", body, {"Content-Type": "application/json"}

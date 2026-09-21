@@ -162,6 +162,20 @@ td.name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 }
 .who i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
 .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* who was matched across the angles, and how sure that match is */
+.people-panel { margin-top: 18px; }
+.people-panel h2 { margin: 0 0 2px; }
+.people-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.people-list li {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: baseline;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
+}
+.people-list .wearing { font-size: 14px; }
+.people-list .when { color: var(--muted); font-size: 12px; }
+.people-list .angles { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.who.click { cursor: pointer; font: inherit; font-size: 12px; }
+.who.click:hover { border-color: var(--c); color: var(--ink); }
+
 /* what the account left out: there, for anyone who wants it, and quiet otherwise */
 .left-out { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
 .left-out summary { cursor: pointer; color: var(--ink-2); }

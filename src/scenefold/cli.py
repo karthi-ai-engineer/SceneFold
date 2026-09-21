@@ -10,11 +10,13 @@ from pathlib import Path
 from scenefold.cut import CUT_NAME, FILM_NAME, CutError, Film, cut_event
 from scenefold.evaluate import FRAME_S, EvaluationError, evaluate_event
 from scenefold.fuse import FuseError, fuse_event
+from scenefold.identity import PEOPLE_NAME, SAME_PERSON, IdentityError, identify_event
 from scenefold.ingest import IngestError, InputResult, Outcome, ingest
 from scenefold.judge import JudgeError, OllamaJudge
 from scenefold.knowledge import KNOWLEDGE_NAME, counts, load_store
-from scenefold.observations import OBSERVATIONS_DIR, SpeechSettings, WatchSettings
+from scenefold.observations import OBSERVATIONS_DIR, PeopleSettings, SpeechSettings, WatchSettings
 from scenefold.observe import WatchError, observe_event
+from scenefold.people import watch_people
 from scenefold.picture_offset import metres
 from scenefold.speech import SpeechError
 from scenefold.story import STORY_NAME, StoryError, ask_event, tell_event
@@ -127,6 +129,59 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Whisper size to listen with: tiny, base, small, medium, large-v3 "
         "(default: %(default)s)",
     )
+    people_parser = commands.add_parser(
+        "people",
+        help="ask each clip who is visible in it",
+        description="Ask the model, once every few seconds, who can be made out in each clip and "
+        "what they are wearing, so the same person can be found in another angle. Clothing and "
+        "position only — never faces, never names. Stays on this computer, beside the footage.",
+    )
+    people_parser.add_argument("event", help="event name used with observe, e.g. match-01")
+    people_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="folder that holds event workspaces (default: ./data)",
+    )
+    people_parser.add_argument(
+        "--model", default=PeopleSettings().model, help="the model to ask, as Ollama names it"
+    )
+    people_parser.add_argument(
+        "--window",
+        type=float,
+        default=PeopleSettings().window_s,
+        help="seconds between looks (default: %(default)s)",
+    )
+    people_parser.add_argument(
+        "--most",
+        type=int,
+        default=PeopleSettings().most,
+        help="most people described from one frame (default: %(default)s)",
+    )
+    people_parser.add_argument(
+        "--again", action="store_true", help="ask again about clips already asked the same way"
+    )
+    identify_parser = commands.add_parser(
+        "identify",
+        help="work out who is the same person across angles",
+        description="Join each clip's sightings into people, then match those people across "
+        "clips on the shared clock. A match nothing supports is left unmatched: somebody one "
+        "phone filmed and the others missed is a person too. Writes "
+        "<data-dir>/<event>/people.json.",
+    )
+    identify_parser.add_argument("event", help="event name used with people, e.g. match-01")
+    identify_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="folder that holds event workspaces (default: ./data)",
+    )
+    identify_parser.add_argument(
+        "--bar",
+        type=float,
+        default=SAME_PERSON,
+        help="how alike two descriptions must be to be one person, 0 to 1 (default: %(default)s)",
+    )
     fuse_parser = commands.add_parser(
         "fuse",
         help="merge what every clip saw into one account of the event",
@@ -231,6 +286,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "sync": _run_sync,
         "evaluate": _run_evaluate,
         "observe": _run_observe,
+        "people": _run_people,
+        "identify": _run_identify,
         "fuse": _run_fuse,
         "story": _run_story,
         "ask": _run_ask,
@@ -381,6 +438,66 @@ def _run_observe(args: argparse.Namespace) -> int:
             spoken = clip.speech[0]
             print(f"      said at {spoken.t_start_s:.0f} s: {spoken.text[:80]}")
     print(f"Observations: {Path(args.data_dir) / args.event / OBSERVATIONS_DIR}")
+    return 0
+
+
+def _run_people(args: argparse.Namespace) -> int:
+    settings = PeopleSettings(model=args.model, window_s=args.window, most=args.most)
+    try:
+        asked = watch_people(
+            args.event,
+            data_dir=args.data_dir,
+            settings=settings,
+            again=args.again,
+            progress=_print_step,
+        )
+    except WatchError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("\ninterrupted; finished clips are saved, run the same command to continue")
+        return 130
+    sightings = sum(len(clip.people) for clip in asked if clip)
+    took = sum(clip.people_seconds_taken or 0 for clip in asked if clip)
+    print(f"\nEvent {args.event}: {sightings} sightings across {len(asked)} clips, {took:.0f} s")
+    for clip in asked:
+        if clip is None:
+            continue
+        if clip.people:
+            wearing = clip.people[0].wearing
+            print(f"  {clip.name} ({len(clip.people)}): {wearing[:80]}")
+        else:
+            print(f"  {clip.name}: nobody could be made out, which is an answer too")
+    print(f"Next: scenefold identify {args.event}")
+    return 0
+
+
+def _run_identify(args: argparse.Namespace) -> int:
+    try:
+        people = identify_event(
+            args.event, data_dir=args.data_dir, same_person=args.bar, progress=_print_step
+        )
+    except IdentityError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    across = [person for person in people if len(person.clips) > 1]
+    sure = [person for person in across if person.sure]
+    print(
+        f"\nEvent {args.event}: {len(people)} people, {len(across)} of them caught by more than "
+        f"one phone ({len(sure)} of those beyond doubt)"
+    )
+    for person in people[:12]:
+        angles = f"{len(person.clips)} angles" if len(person.clips) > 1 else "one angle"
+        doubt = "" if person.sure else " (worth checking)"
+        print(
+            f"  {person.person_id}: {person.wearing[:60]} - {angles}, "
+            f"{person.t_master_start_s:.0f}-{person.t_master_end_s:.0f} s{doubt}"
+        )
+    if len(people) > 12:
+        print(f"  ... and {len(people) - 12} more")
+    if not across:
+        print("Nobody was matched across angles; the clips may not show anyone clearly enough.")
+    print(f"Who was found: {Path(args.data_dir) / args.event / PEOPLE_NAME}")
     return 0
 
 

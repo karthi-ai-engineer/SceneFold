@@ -105,6 +105,34 @@ class Utterance(BaseModel):
     at_s: float | None = None  # the sound that starts it, timed exactly (moments.py)
 
 
+class PeopleSettings(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    model: str = "qwen3.5:4b"
+    window_s: float = Field(10.0, gt=0)  # one look every this many seconds
+    most: int = Field(5, ge=1)  # people described from one frame; beyond that it invents them
+    frame_width: int = Field(768, ge=64)  # wider than the scene questions: clothing is small
+    prompt_version: int = 1
+
+    def key(self) -> str:
+        return self.model_dump_json()
+
+
+class Sighting(BaseModel):
+    """Somebody visible in one clip at one moment, described so another angle can be matched.
+
+    Clothing and position, never faces and never names: enough to say "that is the same person
+    the other phone filmed", and no more. It stays on this computer like everything else.
+    """
+
+    t_start_s: float  # seconds into this clip
+    t_end_s: float
+    wearing: str  # "a red sleeveless top", which is what makes a person findable across angles
+    doing: str = ""
+    where: str = ""  # roughly where in the frame, in the clip's own words
+    entity_id: str | None = None  # filled in by identity.py when angles are matched up
+
+
 class ClipObservations(BaseModel):
     schema_version: int = SCHEMA_VERSION
     clip_id: str
@@ -121,6 +149,11 @@ class ClipObservations(BaseModel):
     speech: list[Utterance] = []
     speech_settings: SpeechSettings | None = None
     speech_seconds_taken: float | None = None
+    # Who was visible, for matching the same person across angles. Cached on its own again: it is
+    # a different question, asked of the same model at a different time.
+    people: list[Sighting] = []
+    people_settings: PeopleSettings | None = None
+    people_seconds_taken: float | None = None
 
 
 def observations_path(event_dir: Path, clip_id: str) -> Path:

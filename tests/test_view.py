@@ -15,6 +15,7 @@ import pytest
 from scenefold import view
 from scenefold.cli import main
 from scenefold.cut import FILM_NAME, ONLY_ANGLE, CutSettings, Film, Shot, save_cut
+from scenefold.identity import PEOPLE_NAME
 from scenefold.knowledge import (
     KNOWLEDGE_NAME,
     NOT_IN_VIEW,
@@ -521,6 +522,27 @@ def test_the_story_is_served_as_written(viewer, story, workspace):
     assert [line["text"] for line in told["lines"]] == [line.text for line in story.lines]
     assert told["lines"][1]["disputed"] is True
     assert told["dropped"] == story.dropped
+
+
+def test_who_was_matched_is_served_as_written(viewer, workspace):
+    (workspace / PEOPLE_NAME).write_text(
+        json.dumps({
+            "event_id": EVENT,
+            "people": [{"person_id": "person-01", "wearing": "a red top", "clips": [CLIP_ID]}],
+            "found": {"people": 1, "across_angles": 0, "sure": 0},
+        }),
+        encoding="utf-8",
+    )  # fmt: skip
+    status, headers, body = fetch(viewer, "/api/people")
+    assert status == 200
+    assert headers["Content-Type"] == "application/json"
+    assert json.loads(body)["people"][0]["wearing"] == "a red top"
+
+
+def test_an_event_nobody_has_been_matched_in_says_what_to_run(viewer):
+    status, _, body = fetch(viewer, "/api/people")
+    assert status == 404
+    assert "scenefold identify" in error_of(body)
 
 
 def test_an_event_without_an_account_says_what_to_run(viewer):
