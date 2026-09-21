@@ -17,6 +17,7 @@ from scenefold.identity import (
     Tracklet,
     colours,
     describes_somebody,
+    describing,
     find_people,
     identify_event,
     link_clip,
@@ -409,3 +410,45 @@ def test_one_angle_is_never_matched_to_two_stretches_of_another():
     assert sorted(len(person.tracklets) for person in people) == [1, 2]
     joined = next(person for person in people if len(person.tracklets) > 1)
     assert joined.clips == ["clip-a", "clip-b"]
+
+
+def test_how_varied_an_events_descriptions_are_is_measured():
+    varied = describing(
+        [
+            _seen(0, "a red sleeveless top"),
+            _seen(0, "white long-sleeve shirt"),
+            _seen(10, "a green jacket"),
+            _seen(10, "yellow top, blue jeans"),
+        ],
+        windows=2,
+    )
+    assert varied.outfits == 4
+    assert varied.per_window == 2.0
+    assert varied.commonest_share == 0.25
+    assert not varied.worth_doubting
+
+
+def test_one_description_over_and_over_is_flagged_as_worth_doubting():
+    # What a stadium crowd at night produces: the model stops describing people and repeats one
+    # plausible concert-goer, and the repeats match each other across angles perfectly well.
+    stock = describing(
+        [_seen(t * 10, "red sleeveless top, black trousers") for t in range(9)]
+        + [_seen(0, "a green jacket")],
+        windows=9,
+    )
+    assert stock.commonest_share == 0.9
+    assert stock.commonest == "red sleeveless top, black trousers"
+    assert stock.worth_doubting
+
+
+def test_descriptions_that_pick_out_nobody_do_not_count_towards_the_variety():
+    told = describing([_seen(0, "a person"), _seen(0, "dark clothing"), _seen(0, "a red top")], 1)
+    assert told.sightings == 3  # what the model said
+    assert told.usable == 1  # what any of it was worth
+    assert told.outfits == 1
+
+
+def test_an_event_nobody_could_be_made_out_at_is_not_a_crash():
+    told = describing([], windows=0)
+    assert told.outfits == 0 and told.per_window == 0.0
+    assert not told.worth_doubting

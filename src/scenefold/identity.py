@@ -394,11 +394,15 @@ def identify_event(
 
     tracklets: list[Tracklet] = []
     asked = 0
+    seen_at_all: list[Sighting] = []
+    windows = 0
     for clip in manifest.clips:
         done = load_observations(event_dir, clip.clip_id)
         if done is None or done.people_settings is None:
             continue
         asked += 1
+        seen_at_all += done.people
+        windows += len({round(s.t_start_s, 3) for s in done.people})
         if progress:
             progress(f"following {len(done.people)} sightings through {clip.source.name}")
         tracklets += link_clip(
@@ -409,8 +413,54 @@ def identify_event(
             f"no clip has been asked who was in it; run `scenefold people {event_id}` first"
         )
     people = find_people(tracklets, same_person=same_person)
-    _write(event_dir, event_id, people, asked)
+    _write(event_dir, event_id, people, asked, describing(seen_at_all, windows))
     return people
+
+
+@dataclass(frozen=True)
+class Describing:
+    """How varied the descriptions of an event are, which is how much they can be trusted.
+
+    Where people are big enough to describe, the model names many different outfits and no one of
+    them accounts for much. Where they are not — a stadium crowd at night — it stops describing
+    people and starts producing a stock answer, the same plausible concert-goer over and over. The
+    descriptions still look specific, they still match each other across angles, and the matches
+    still come out marked beyond doubt. Nothing downstream can tell the difference, so it is
+    measured here and printed, rather than quietly believed.
+
+    Measured on two events. Six angles of a stage: 3.8 people a window, 137 different outfits, the
+    commonest 12% of sightings. Five angles of a stadium: 1.4 people a window, 19 outfits, the
+    commonest 56%. No threshold is set on this, because two events is not enough to set one on.
+    """
+
+    sightings: int
+    usable: int
+    outfits: int  # how many different colour-and-garment sets were described
+    per_window: float  # people described per look
+    commonest_share: float  # what share of sightings the single commonest outfit accounts for
+    commonest: str
+
+    @property
+    def worth_doubting(self) -> bool:
+        """Whether one description accounts for enough of the event to look like a stock answer."""
+        return self.commonest_share >= 0.3
+
+
+def describing(sightings: list[Sighting], windows: int) -> Describing:
+    """How varied an event's descriptions of people are."""
+    kept = [s for s in sightings if describes_somebody(s.wearing)]
+    outfits: dict[tuple, list[str]] = {}
+    for seen in kept:
+        outfits.setdefault(tuple(sorted(telling(seen.wearing))), []).append(seen.wearing)
+    commonest = max(outfits.values(), key=len, default=[])
+    return Describing(
+        sightings=len(sightings),
+        usable=len(kept),
+        outfits=len(outfits),
+        per_window=round(len(sightings) / windows, 2) if windows else 0.0,
+        commonest_share=round(len(commonest) / len(kept), 4) if kept else 0.0,
+        commonest=min(commonest, key=len) if commonest else "",
+    )
 
 
 def load_people(event_dir: Path) -> dict | None:
@@ -424,7 +474,13 @@ def load_people(event_dir: Path) -> dict | None:
         return None
 
 
-def _write(event_dir: Path, event_id: str, people: list[Person], clips_asked: int) -> Path:
+def _write(
+    event_dir: Path,
+    event_id: str,
+    people: list[Person],
+    clips_asked: int,
+    described: "Describing",
+) -> Path:
     across = [p for p in people if len(p.clips) > 1]
     out = {
         "event_id": event_id,
@@ -465,6 +521,16 @@ def _write(event_dir: Path, event_id: str, people: list[Person], clips_asked: in
             "people": len(people),
             "across_angles": len(across),
             "sure": len([p for p in across if p.sure]),
+        },
+        # How much the descriptions behind all of this are worth. See Describing.
+        "describing": {
+            "sightings": described.sightings,
+            "usable": described.usable,
+            "outfits": described.outfits,
+            "people_per_look": described.per_window,
+            "commonest_share": described.commonest_share,
+            "commonest": described.commonest,
+            "worth_doubting": described.worth_doubting,
         },
     }
     path = Path(event_dir) / PEOPLE_NAME

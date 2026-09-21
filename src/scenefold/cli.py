@@ -10,7 +10,13 @@ from pathlib import Path
 from scenefold.cut import CUT_NAME, FILM_NAME, CutError, Film, cut_event
 from scenefold.evaluate import FRAME_S, EvaluationError, evaluate_event
 from scenefold.fuse import FuseError, fuse_event
-from scenefold.identity import PEOPLE_NAME, SAME_PERSON, IdentityError, identify_event
+from scenefold.identity import (
+    PEOPLE_NAME,
+    SAME_PERSON,
+    IdentityError,
+    identify_event,
+    load_people,
+)
 from scenefold.ingest import IngestError, InputResult, Outcome, ingest
 from scenefold.judge import JudgeError, OllamaJudge
 from scenefold.knowledge import KNOWLEDGE_NAME, counts, load_store
@@ -497,8 +503,28 @@ def _run_identify(args: argparse.Namespace) -> int:
         print(f"  ... and {len(people) - 12} more")
     if not across:
         print("Nobody was matched across angles; the clips may not show anyone clearly enough.")
+    _print_describing(Path(args.data_dir) / args.event)
     print(f"Who was found: {Path(args.data_dir) / args.event / PEOPLE_NAME}")
     return 0
+
+
+def _print_describing(event_dir: Path) -> None:
+    """How much the descriptions behind all this are worth, in the plainest terms available."""
+    found = load_people(event_dir)
+    told = (found or {}).get("describing")
+    if not told:
+        return
+    print(
+        f"Behind it: {told['sightings']} sightings, {told['outfits']} different outfits, "
+        f"{told['people_per_look']} people described per look"
+    )
+    if told["worth_doubting"]:
+        print(
+            f"  Doubt this: {told['commonest_share']:.0%} of the sightings are the same outfit "
+            f"({told['commonest']}). Where people are too small to make out, the model stops "
+            f"describing them and repeats one plausible person, and those repeats match each "
+            f"other across angles perfectly well. Watch the footage before believing any of it."
+        )
 
 
 def _run_fuse(args: argparse.Namespace) -> int:

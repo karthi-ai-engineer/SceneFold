@@ -192,12 +192,28 @@ Three things it refuses to do:
 - **Match on nothing.** "A person", "dark clothing", "dark jeans" pick out half the event, so a
   sighting described that way is dropped before any matching happens.
 
-**Known limits.** This reads clothing out of a small model's words, not out of the pixels. It works
-where people are large and lit — on stage footage the model gives descriptions two angles agree on
-by themselves — and finds nobody on a wide crowd shot, where it can only manage "dark clothing".
+**The failure to know about.** Where people are too small to make out, the model does not say so.
+It stops describing people and starts producing a stock answer — one plausible concert-goer, over
+and over — and because the repeats are identical, they match each other across angles and come out
+marked beyond doubt. Six angles of a stage gave 137 different outfits and 3.8 people a look, and
+the commonest outfit was 12% of the sightings. Five angles of a stadium at night gave 19 outfits
+and 1.4 people a look, with 56% of the sightings being one invented red top. `scenefold identify`
+prints those numbers every time, and says plainly when one description has taken over the event:
+
+```
+Behind it: 136 sightings, 19 different outfits, 1.45 people described per look
+  Doubt this: 56% of the sightings are the same outfit (red sleeveless top, black trousers).
+  Where people are too small to make out, the model stops describing them and repeats one
+  plausible person, and those repeats match each other across angles perfectly well.
+```
+
+**Other known limits.** This reads clothing out of a small model's words, not out of the pixels.
 Two people really can wear the same black t-shirt, and no description will ever separate them.
 Accuracy on real footage is not yet measured: that needs an event where who is who is known, which
-is the same hand-labelled event the observations are waiting on.
+is the same hand-labelled event the observations are waiting on. Having the model referee its own
+doubtful matches was tried and dropped — across three framings of the question its answers swung
+between never rejecting a pair and rejecting nearly all of them, so the matches rest on the words
+and on an honest "worth checking".
 
 ## What the cut does
 
