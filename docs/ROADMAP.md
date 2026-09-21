@@ -18,7 +18,7 @@ Last updated: 2026-09-21
 | 5 | Clip understanding | 4 | 2 | Done but for recall: watches, listens, and times the moments, all on this computer |
 | 6 | Event knowledge + conflicts | 6, 8 | 2 | Done: clips merged into events with evidence, and disagreements found twice over |
 | 7 | Story + Q&A → **v0.5.0** | 7, 10 | 1–2 | Built: cited story and questions, every sentence checked in code. Tag held back until faithfulness is checked by hand |
-| 8 | Cross-angle identity | 5 | 2–3 | In progress: matching from what the clips say people are wearing, no new dependency |
+| 8 | Cross-angle identity | 5 | 2–3 | Built and merged: matching from what the clips say people are wearing, no new dependency. Accuracy on real footage waits on a hand-labelled event |
 | 9 | Smart cut + release → **v1.0.0** | 9 | 2 | Not started |
 
 **Why this order differs from the brief's roadmap:** identity (Phase 8) is the riskiest, most research-heavy part.

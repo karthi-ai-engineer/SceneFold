@@ -33,6 +33,8 @@ uv run scenefold sync <event>                         # writes data/<event>/time
 uv run scenefold sync <event> --sound-only            # skip the picture pass (distance), faster
 uv run scenefold evaluate <event> <truth.json>        # sync error against ground truth moments
 uv run scenefold observe <event>                      # what each clip shows (local model, Ollama)
+uv run scenefold people <event>                       # who each clip can see, and what they wear
+uv run scenefold identify <event>                     # who is the same person across the angles
 uv run scenefold fuse <event>                         # merges the clips into knowledge.sqlite
 uv run scenefold story <event>                        # a cited account, data/<event>/story.json
 uv run scenefold ask <event> "<question>"             # answered from the store, with citations
