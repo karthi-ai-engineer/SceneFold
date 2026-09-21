@@ -47,6 +47,21 @@ function render(found, people, nameOf, colorOf, jumpTo) {
     `${across} caught by more than one phone (${sure} of those beyond doubt) · ` +
     `matched on what the clips say they were wearing, so click an angle and check it`;
 
+  // Where people are too small to make out, the model repeats one invented person, and the repeats
+  // match each other across angles perfectly well. The page must not present that as a result.
+  const told = found.describing;
+  const doubt = $("people-doubt");
+  doubt.hidden = !told?.worth_doubting;
+  if (told?.worth_doubting) {
+    doubt.innerHTML =
+      `<strong>Doubt this.</strong> ${Math.round(told.commonest_share * 100)}% of the ` +
+      `${told.usable} usable sightings are one outfit — ${esc(told.commonest)} — across ` +
+      `${told.outfits} outfits in all, at ${told.people_per_look} people a look. Where people are ` +
+      `too small to make out, the model stops describing them and repeats one plausible person. ` +
+      `Those repeats match each other across angles, and come out below marked beyond doubt. ` +
+      `Watch the footage before believing any of it.`;
+  }
+
   $("people-list").innerHTML = people
     .slice(0, MOST_SHOWN)
     .map((person) => {
