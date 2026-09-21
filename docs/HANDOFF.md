@@ -67,7 +67,7 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 
 ---
 
-## Where things stand (session 7, 2026-09-21)
+## Where things stand (session 10, 2026-09-21)
 
 | Phase | Status | Where |
 |---|---|---|
@@ -76,8 +76,11 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 | 2 Sync | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines | `main` (merged from `phase-2-sync`) |
 | 3 Synced viewer | Done, **v0.1.0**: `scenefold view`, every picture within half a frame, the placement checked on the pictures alone, demo event and README GIF | `main` (merged from `phase-3-viewer`) |
 | 4 Quality cut | Done: `scenefold cut` scores each second, plans the shots, renders `cut.mp4`, and the viewer plays it | `main` (merged from `phase-4-cut`) |
-| 5 Clip understanding | **Next** | not started |
-| 6–9 | Not started | |
+| 5 Clip understanding | Done but for recall: watches, listens, times the moments, all on this computer | `main` (merged from `phase-5-moments`) |
+| 6 Event knowledge | Done: `scenefold fuse` merges the clips into events with evidence, and finds disagreements twice over (arithmetic, then the model reading the accounts) | `main` |
+| 7 Story + Q&A | Built: `scenefold story` and `scenefold ask`, every sentence checked in code against the footage. **`v0.5.0` not tagged** — it waits on somebody watching footage they know and saying whether the sentences are true | `main` |
+| 8 Cross-angle identity | **In progress**: `scenefold people` + `scenefold identify` match people by what the clips say they are wearing | `phase-8-identity` |
+| 9 Smart cut + release | Not started | |
 
 - Results and findings: `docs/ROADMAP.md`, Phase 2 "Progress". In short: on two real Jiku subsets,
   5 of 6 phones agree with the published ground truth within 6.4 ms (174 s overlaps) and 26 ms
@@ -482,3 +485,45 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 7. Two parsing traps worth remembering: a citation after the full stop ("drop. [1]") gets split
    onto the next sentence and must be carried back, and neighbouring moments that share one
    description make the model repeat itself, so identical adjacent lines are merged.
+
+### Session 10: 2026-09-21, Acer Predator
+
+1. **Phase 8 started** on `phase-8-identity`. Before writing anything, checked whether the signal
+   exists at all: asked `qwen3.5:4b` to describe individuals in the footage we have. On the Jiku
+   stage clips it gave genuinely separating descriptions, and two phones filming the same second
+   independently produced the same two people. On a Coldplay crowd shot it managed "dark clothing".
+   So the first version reads clothing out of words — no detector weights, no licence question,
+   nothing to download — and a detector plus a re-identification embedding stays the plan.
+2. `scenefold people` asks each clip who is visible, every ten seconds. `scenefold identify` joins
+   the sightings into people: within a clip first, then across clips, both by optimal assignment
+   (`scipy.linear_sum_assignment`) rather than by taking the best-looking pair first.
+3. **Measured on six angles of Jiku** (20 minutes of footage, ~13 minutes of asking): 465 sightings
+   → 425 usable → 80 tracklets → 26 people, 16 across angles, 7 beyond doubt. No person was split
+   inside a clip. The bar moves the count smoothly from 0.30 to 0.80, so it is not on a knife edge.
+4. **Two rules the data asked for.** One phone cannot film one person twice at once, so a chain of
+   resemblances is refused where it would put two simultaneous tracklets in one person. And because
+   each angle's people are matched one to one, a person split in two inside a clip cannot be matched
+   at all — so somebody who leaves the frame and comes back is taken up again, but only on a
+   resemblance strong enough to bridge the gap.
+5. **The failure worth remembering.** On the stadium footage the model does not say "I cannot see
+   anyone". It repeats one invented concert-goer, and because the repeats are identical they match
+   each other across angles and come out marked *beyond doubt*: 11 people, 5 across angles, 3 of
+   them "sure", over footage where nobody is distinguishable. Nothing downstream can tell that from
+   a real result. What separates the two is measurable — stage: 137 outfits, 3.8 people a look,
+   commonest 12% of sightings; stadium: 19 outfits, 1.4 a look, commonest 56% — so `identify` now
+   prints those numbers and says plainly when one description has taken over the event. No
+   threshold rejects anything automatically: two events is not enough to set one on.
+6. **Tried and dropped:** having the model referee its own doubtful matches. Across three framings
+   its answers swung from never rejecting a pair to rejecting nearly all of them. It names the
+   clashing garment reliably ("purple vs brown", "red top vs white shirt") but cannot turn that into
+   a verdict, and a component that unreliable makes the decisions worse, not better. `judge.py` was
+   reverted. If it is tried again, ask only for the clash and decide in code — and measure on more
+   than ten pairs, because the framings differed by 4 of 8 on samples that small.
+7. Viewer: a "Who was there" panel in the report tab, one chip per angle, clicking one seeks to the
+   second that phone first saw them — which is the only way to check a match. The doubt warning sits
+   above the list, not below it.
+8. **Still open from this phase:** whether each match is the *right* person. A spot check of four
+   angles at one moment confirmed the sync and the machinery and also showed the weak point: the
+   model described people on stage well and described others in ways no frame supported, and a match
+   between two consistent mistakes still matches. Only the hand-labelled event can settle it. The
+   roadmap's remaining Phase 8 steps (re-running fusion with shared entities) are not done.
