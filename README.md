@@ -12,10 +12,29 @@ and trustworthy picture of what happened.**
 
 ## Status
 
-Early development. **Ingest, sync, a synced multi-angle viewer, and a first automatic cut work
-today.** Later phases add a cited story of the event, where the cameras disagree, and an edit that
-knows what it is looking at. See the [roadmap](docs/ROADMAP.md) and the
+The whole chain works end to end, on your own machine and with nothing uploaded anywhere:
+**ingest → sync → watch and listen → who is in it → merge into events → a cited account → a film.**
+No `v1.0.0` yet, and the reason is in [what it has been measured at](#what-it-has-been-measured-at):
+the parts that check *themselves* are measured, and the parts that would need a person watching
+footage they already know are not. See the [roadmap](docs/ROADMAP.md) and the
 [project brief](docs/PROJECT_BRIEF.md).
+
+```
+ phone videos ─┬─▶ ingest ──▶ sync ──▶ VIEWER      every angle on one clock, within half a frame
+               │                 │
+               │                 ├───▶ cut ──────▶ FILM    one film, with a reason for every shot
+               │                 │      ▲
+               └─▶ observe ──────┤      │         what each clip saw and said, watched alone
+                     │           │      │
+                     ├─▶ people ─┤      │         who is visible, and who is the same across angles
+                     │           │      │
+                     └─▶ fuse ───┴──────┘         one clock, one account per moment, disagreements
+                            │
+                            └──▶ story / ask ──▶ ACCOUNT   every sentence citing the footage
+```
+
+Everything after `sync` is optional: each step reads what the ones before it wrote, and the viewer,
+the film and the account each work with whatever exists.
 
 ![The viewer playing four clips of one event in sync](docs/viewer.gif)
 
@@ -23,6 +42,30 @@ Four clips that started at different times, each with its own framing and its ow
 together on one timeline. The clock burnt into the picture is the same in every tile, and each clip
 stays within a frame of where the shared clock wants it. Nobody is filmed: the clips are drawn by
 `tools/demo_event.py`, so you can make this event yourself in a minute.
+
+## What it has been measured at
+
+Two real events and one drawn one. `jiku-saf-long` is six phones at a stage performance with
+published ground truth; `coldplay-jan26` is five YouTube uploads of one stadium concert; `demo` is
+drawn by `tools/demo_event.py`, so its answers are known by construction.
+
+| What | Measured | On what |
+|---|---|---|
+| Sync error against ground truth | 2.1 ms median, 6.4 ms worst, every moment within a frame | `jiku-saf-long`, 5 of 6 phones, 187 measurements |
+| …and the sixth phone | 70–110 ms out, cause unresolved, [written up](docs/ROADMAP.md) rather than hidden | the Nexus S, in both subsets |
+| Against other tools | best of four; `audio-offset-finder` 6.4/30.4 ms, `audalign` 14.6/47.9 ms | same clips, same scoring |
+| Viewer drift | every tile within half a frame of the shared clock | `tools/check_viewer.py`, headless Chrome |
+| Moments corroborated | 219 of 298 where all four filmed one show; 118 of 311 where phones pointed different ways | `demo` / `coldplay-jan26` |
+| Disagreements found | 91, of which 74 left unresolved because no camera had the better view | `coldplay-jan26` |
+| Story citations | 15 sentences, 0 dropped, 4 flagged as disputed — each checked in code | `coldplay-jan26` |
+| People matched across angles | 16 of 26, 7 beyond doubt, 0 split inside a clip | `jiku-saf-long`, 6 angles |
+| Cost per event | £0, and nothing leaves the machine: 20 min of footage takes 4.6 min to watch and 8.5 min to find people in | `jiku-saf-long`, `qwen3.5:4b` through Ollama, one laptop GPU |
+
+**What is not measured, and cannot be from this footage.** Whether a sentence that cites a real
+moment describes it *truthfully*. Whether the 91 disagreements are real ones. Whether a matched
+person is the *right* person. All three need an event where somebody already knows what happened
+and who was there — which is why `v0.5.0` and `v1.0.0` are both still untagged. See
+[Responsible use](#responsible-use) for what that test event should look like.
 
 ## What ingest does
 
@@ -217,11 +260,17 @@ and on an honest "worth checking".
 
 ## What the cut does
 
-`scenefold cut <event>` edits the angles into one film, with no AI and no idea of what is being
-filmed. It judges each second of each clip on three things a camera can be wrong about — how much
-detail the picture holds, how far the whole frame shifts (a phone being waved about, or a fast pan)
-and how much is crushed black or blown white — and scores them against the other angles of the same
-event.
+`scenefold cut <event>` edits the angles into one film. It judges each second of each clip on three
+things a camera can be wrong about — how much detail the picture holds, how far the whole frame
+shifts (a phone being waved about, or a fast pan) and how much is crushed black or blown white —
+and scores them against the other angles of the same event.
+
+That is everything a camera can be wrong about and nothing about what it was pointed at, so the cut
+also reads the event store: how much happened in each second, weighted by how many phones caught it,
+and how much of that each angle has evidence for. A clip that was filming but reported nothing was
+pointed somewhere else. The two are added together, so an angle wins a moment by having both seen it
+and been worth looking at — and a cut across a moment costs more than one on the quiet in front of
+it, which is where an editor would put it.
 
 Those scores are weighed against three rules an editor would recognise: hold a shot for at least a
 few seconds, don't cut unless the new angle is clearly better, and don't bounce straight back to
@@ -232,14 +281,29 @@ best *sequence of shots*, not the best angle second by second.
   ones the nearest to the stage, because its sound is the least delayed. The film lasts exactly as
   long as that clip was recording.
 - Pictures are lined up on the event, not on when each phone heard it, so a cut never jumps in time.
-- `cut.json` records every shot with the reason it was chosen ("steadiest picture of the angles
-  recording", "the only angle recording", "kept rolling: cutting away would have cost more than it
-  gained"), and `cut.mp4` is the film. `--plan-only` writes the shot list without rendering.
+- `cut.json` records every shot with the reason it was chosen, and `cut.mp4` is the film.
+  `--plan-only` writes the shot list without rendering.
 
-**Known limits.** Footage outside the microphone clip's span isn't used — the price of never
-cutting the sound. The cut doesn't yet use what is *in* the picture, so a sharp shot of the floor
-beats a shaky shot of the moment everyone came for; that arrives when the observations below feed
-the cut.
+On the concert, that reads as a shot list a person could argue with:
+
+```
+     0.0-  59.0 s  Dharm Bharodiya      the only angle recording
+    59.0- 158.0 s  Somnath Das          caught what was happening, and had the better picture of those that did
+   158.0- 228.0 s  Gareth Sequeira      steadiest picture of the angles recording
+   228.0- 235.0 s  Dharm Bharodiya      kept rolling: cutting away would have cost more than it gained
+   ...
+   283.0- 289.0 s  Adrit Girish         caught what was happening, which the other angles missed
+```
+
+Knowing what happened turned 13 shots into 10 and moved 21 seconds between angles. On the drawn demo
+event it changes nothing at all, and that is right: every clip films the same show, so every angle
+saw everything (shares of 0.92–0.95, against 0.16–0.75 on real phones pointed different ways).
+
+**Known limits.** Footage outside the microphone clip's span isn't used — the price of never cutting
+the sound. What the cut knows about "what happened" is only as good as the event store behind it,
+which is built on a small model's descriptions; that is why being pointed at the moment is worth
+half of what the picture is worth, and never more. An event with no store yet is cut on the picture
+alone, exactly as before.
 
 ## What observing does
 
@@ -383,22 +447,94 @@ uv run scenefold evaluate my-event claps.json
 
 Clips are named by file name, or by clip ID when two files share a name.
 
+### Understanding what happened
+
+Everything so far works on sound and pixels alone. The next three steps need a model, running on
+your own computer through [Ollama](https://ollama.com) — no account, no upload, no cost:
+
+```sh
+ollama pull qwen3.5:4b
+uv run scenefold observe my-event     # what each clip shows, and what was said in it
+uv run scenefold fuse my-event        # the same moment seen by several phones becomes one event
+uv run scenefold story my-event       # a short account, every sentence citing the footage
+```
+
+Really from the concert, shortened here only by cutting whole sentences:
+
+```
+What happened at coldplay-jan26, as the footage has it:
+
+  0:48.6  A lone performer stands on a stage while a massive audience holds up thousands of
+          red lights [1].
+          from 34b92d86
+  1:15.3  A large concert is taking place at night with a massive crowd holding up glowing
+          lights [1].
+          from 34b92d86, f098e4bb
+  2:48.2  A performer stands on a circular stage while a massive audience holds up numerous
+          red lights creating a dense field of light that occasionally dims, though one
+          camera caught nothing here [1]. (the clips disagree here)
+          from 34b92d86, 60780912
+
+Story: data/coldplay-jan26/story.json
+```
+
+Each clip is watched **on its own** — one clip, a few seconds at a time — so two angles stay two
+independent witnesses, and a moment several of them caught means something. Every sentence is
+checked in code, not by the model: the moment it cites has to exist, and a clip that saw it has to
+have been filming then. Sentences that fail are dropped, with the reason kept.
+
+Then ask it things:
+
+```sh
+uv run scenefold ask my-event "what were the crowd doing with their lights?"
+```
+
+```
+They used the lights to form thousands of glowing dots, seen from above. (the clips disagree here)
+  at 3:18.9, from 34b92d86, 60780912, eae777b3
+```
+
+It says "The footage does not show this" rather than guessing, which is the point of asking it at
+all.
+
+Optionally, who was there and which angles caught them:
+
+```sh
+uv run scenefold people my-event      # who each clip can see, and what they are wearing
+uv run scenefold identify my-event    # who is the same person across the angles
+```
+
+Read [Who is who across angles](#who-is-who-across-angles) before trusting this one: it works where
+people are large and lit, and invents them where they are not — and it says which it thinks it is
+looking at.
+
 ### Making the film
 
 ```sh
 uv run scenefold cut my-event
 ```
 
+Really from the concert, with the uploaders' names shortened to fit:
+
 ```
-Film of my-event: 13 shots, 5:08.0 long, sound from Dharm.mp4 (recorded longest, so its sound
-covers the most of the event)
-    0.0-  59.0 s  Dharm.mp4    the only angle recording
-   59.0-  88.0 s  Somnath.mp4  best exposed of the angles recording
-   88.0-  95.0 s  Dharm.mp4    sharpest picture of the angles recording
-   ...
-Shots: data/my-event/cut.json
-Film: data/my-event/cut.mp4
+Film of coldplay-jan26: 10 shots, 5:08.0 long, sound from Dharm (recorded longest, so its
+sound covers the most of the event)
+     0.0-  59.0 s  Dharm     the only angle recording
+    59.0- 158.0 s  Somnath   caught what was happening, and had the better picture of those that did
+   158.0- 228.0 s  Gareth    steadiest picture of the angles recording
+   228.0- 235.0 s  Dharm     kept rolling: cutting away would have cost more than it gained
+   235.0- 246.0 s  Jyoti     steadiest picture of the angles recording
+   246.0- 256.0 s  Gareth    caught what was happening, and had the better picture of those that did
+   256.0- 266.0 s  Dharm     sharpest picture of the angles recording
+   266.0- 283.0 s  Gareth    sharpest picture of the angles recording
+   283.0- 289.0 s  Adrit     caught what was happening, which the other angles missed
+   289.0- 308.0 s  Jyoti     best exposed of the angles recording
+Shots: data/coldplay-jan26/cut.json
+Film: data/coldplay-jan26/cut.mp4
 ```
+
+Every shot carries the reason it was chosen, so the film is something you can argue with rather
+than something you have to take on trust.
 
 ### Watching the clips together
 
@@ -468,8 +604,28 @@ data/            your events; never committed
   when one is written on the picture. It stays in `data/<event>/`, on your machine, with the
   footage. It is meant to join two angles of one afternoon, not to identify a stranger, and it
   should be deleted with the event.
-- Everything runs on your own machine; nothing is uploaded. Later phases may use cloud AI services;
-  the plan is to make that a clear choice and to offer face blurring first.
+- Everything runs on your own machine; nothing is uploaded. If a cloud model is ever offered, it
+  will be a clear choice and face blurring will come first.
+
+### The test event this project still needs
+
+Three of the measurements above are missing for one reason: checking them needs somebody who
+already knows what happened. If you want to help, or to satisfy yourself that any of this works,
+film one:
+
+- **Three to five friends**, each filming the same twenty minutes on their own phone, starting and
+  stopping whenever they like. Everyone agrees to be filmed, and agrees to the footage being used
+  this way.
+- **Clothes that tell people apart** — not five people in black t-shirts, which is the one case no
+  description can ever separate.
+- **A few claps** at the start, middle and end, loud enough for every phone. Those are the moments
+  sync is scored against.
+- **Write down what happened** as you go: a few timestamps and a sentence each. That list is what
+  the account gets checked against.
+
+Then run the chain and compare. That answers whether the story is faithful, whether the flagged
+disagreements are real, and whether the people matched across angles are the right people — and it
+gives this README a demo of people who chose to be in it.
 
 ## License
 
