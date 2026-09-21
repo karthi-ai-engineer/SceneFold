@@ -10,9 +10,12 @@ one number per clip: how much later than the nearest phone it heard the event.
     t_master of this clip's pictures = offset_s + heard_late_s + t_local / (1 + drift_ppm / 1e6)
 
 Brightness only works where something visibly changes together. Stage lighting is ideal; a steadily
-lit room gives no answer at all, and then this says so instead of guessing. Two traps, both
-measured: lighting on a regular beat matches at every beat, and a match has to be judged against
-lags far away, because brightness changes slowly and nearby lags score almost as well.
+lit room gives no answer at all, and then this says so instead of guessing. Three traps, all
+measured. A match has to be judged against lags far away, because brightness changes slowly and
+nearby lags score almost as well. Anything that repeats matches at every repeat, so the match must
+also be the best one anywhere, not only the best where the sound said to look: video encoding
+leaves its mark on every keyframe, a second apart, and stage lighting follows the beat. And
+single-frame flicker does not survive encoding at all.
 """
 
 from dataclasses import dataclass
@@ -30,6 +33,10 @@ GRID = (32, 18)  # each frame is shrunk to this before its brightness is taken
 SMOOTH_S = 2.0  # changes slower than this (a pan, the camera's own exposure) are taken out
 FAR_S = 5.0  # a match is judged against lags at least this far from it
 MIN_FAR_LAGS = 10  # ...and only when there are this many of them to judge against
+# How far the match must lead the best lag anywhere else, in standard deviations of the rest.
+# Measured: a pattern that merely repeats (video keyframes a second apart) leads by at most 0.50,
+# while real matches lead by 0.84-2.71 on drawn clips and 0.60-1.97 on two stadium concerts.
+MIN_LEAD = 0.6
 SOUND_M_PER_S = 343.0
 
 
@@ -101,7 +108,13 @@ def match_pictures(
     far = usable & (np.abs(lags - lags[best]) > FAR_S * fps)
     if far.sum() < MIN_FAR_LAGS or scores[far].std() <= 0:
         return None
-    clearness = (scores[best] - np.median(scores[far])) / scores[far].std()
+    # Anything that repeats matches at every repeat: video encoding leaves a mark on every
+    # keyframe, a second apart, and stage lighting follows the beat. So the match also has to lead
+    # the best lag anywhere else, not merely be the best where the sound said to look.
+    spread = scores[far].std()
+    if scores[best] - scores[far].max() <= MIN_LEAD * spread:
+        return None
+    clearness = (scores[best] - np.median(scores[far])) / spread
     lag = (lags[best] + parabolic_offset(scores, best)) / fps
     return PictureMatch(
         lag_s=float(lag), clearness=float(clearness), overlap_s=float(overlap[best] / fps)

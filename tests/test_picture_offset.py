@@ -33,9 +33,8 @@ def test_searches_only_around_where_the_sound_put_it():
 
     found = match_pictures(a, b, around_s=60.0, search_s=2.0)  # nowhere near the true 22.5 s
 
-    assert found is not None
-    assert abs(found.lag_s - 22.5) > 2  # it stayed inside the search
-    assert found.clearness < 4  # and says the match is not clear
+    # the best lag inside that window leads nothing, so there is no answer rather than a wrong one
+    assert found is None
 
 
 def test_a_steady_room_gives_no_clear_answer():
@@ -153,3 +152,32 @@ def test_a_match_knows_what_it_is():
     match = PictureMatch(lag_s=1.0, clearness=5.0, overlap_s=30.0)
 
     assert (match.lag_s, match.clearness, match.overlap_s) == (1.0, 5.0, 30.0)
+
+
+def test_a_pattern_that_repeats_is_not_a_match():
+    """Video encoding marks every keyframe, a second apart. That matches at every second, so it
+    must not be read as the clips lining up: this is what failed on a steadily lit room."""
+    rng = np.random.default_rng(4)
+    seconds, fps = 120, 30
+    beat = np.tile(np.concatenate([[14.0], np.zeros(fps - 1)]), seconds)  # a mark every second
+    a = beat + rng.standard_normal(len(beat)) * 0.4
+    b = beat + rng.standard_normal(len(beat)) * 0.4
+
+    found = match_pictures(a[: 90 * fps], b[18 * fps : 108 * fps], around_s=0.0)
+
+    assert found is None
+
+
+def test_a_real_match_still_wins_through_a_repeating_pattern():
+    """The same keyframe marks, but the clips really do share a show: the match must survive."""
+    show = synth.lighting(200, seed=11)
+    beat = np.tile(np.concatenate([[6.0], np.zeros(29)]), len(show) // 30 + 1)[: len(show)]
+    lit = show + beat
+    a = filmed(lit, 0, 150, seed=1)
+    b = filmed(lit, 22.5, 120, seed=2)
+
+    found = match_pictures(a, b, around_s=22.5)
+
+    assert found is not None
+    assert found.lag_s == pytest.approx(22.5, abs=FRAME_S)
+    assert found.clearness > 4

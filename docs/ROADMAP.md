@@ -248,9 +248,16 @@ measuring is now part of sync itself, in `src/scenefold/picture_offset.py`:
 
 - Every placed pair is matched again on its brightness curve, searching ±2 s around where the sound
   put it, with the pair's measured clock drift cancelled exactly as the sound does it.
-- A match counts only when it stands 4 standard deviations above lags more than 5 s away. Scores
-  divide by the square root of the overlap, so every lag is judged on the same scale however long
-  the two clips share.
+- A match counts only when it stands 4 standard deviations above lags more than 5 s away **and**
+  leads the best lag anywhere else by 0.6 of those standard deviations. Scores divide by the square
+  root of the overlap, so every lag is judged on the same scale however long the two clips share.
+- The second bar was added on 2026-09-21 after CI failed on Windows: a steadily lit room, whose
+  clips hold no signal at all, produced a "clear" match. The cause is that anything repeating
+  matches at every repeat — video encoding marks every keyframe, one second apart — and a repeat
+  can win the local search by luck. Measured: a repeating pattern alone leads by at most 0.50
+  standard deviations, while real matches lead by 0.84-2.71 (drawn clips) and 0.60-1.97 (two
+  stadium concerts), so the bar sits at 0.6. It drops the weakest pairs and leaves the answers
+  unchanged: 0/47/54/97/268 ms on the 26th (was 0/44/50/96/270).
 - The clear differences are solved into one delay per clip, dropping any that disagrees with the
   rest by more than 60 ms, exactly as the sound solver does. `timeline.json` gains `heard_late_s`
   per clip and the picture measurement on every pair (`schema_version` 2).

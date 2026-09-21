@@ -81,7 +81,9 @@ much later than the nearest clip that phone heard the event.
 - `scenefold sync` reports it as a distance, and the viewer can line up the pictures instead of the
   sound — what you want when watching several angles at once.
 - It needs light that changes together. Where the lighting is steady it says it cannot tell instead
-  of guessing, and a match is only believed when it stands clear of matches at unrelated times.
+  of guessing: a match is believed only when it stands clear of matches at unrelated times *and*
+  leads every other moment it could have matched, since anything that repeats — stage lighting on
+  a beat, or the mark video encoding leaves on every keyframe — matches at every repeat.
 - Accuracy: on drawn clips where the true answer is zero it reads within 17 ms, half a frame.
 
 **Different nights, same song.** Bands play along to backing tracks that are identical every night,

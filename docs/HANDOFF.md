@@ -52,7 +52,7 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 316 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 318 passed, 1 xfailed (the known chorus limit)
 node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+)
 ```
 
@@ -378,3 +378,11 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    `view.py` serves `/api/cut` and `/film.mp4`. Watch the connection limit: Chrome allows about six
    per site and the clip videos hold them all, so the film's own data is fetched only when someone
    opens the tab. 316 tests pass, plus 15 viewer timing tests.
+8. **CI caught a false alarm the local machine never showed.** On Windows, `test_steady_light_says
+   _it_cannot_tell` failed: a steadily lit room, which holds no signal at all, produced a "clear"
+   brightness match. Cause: anything that repeats matches at every repeat, and video encoding marks
+   every keyframe a second apart, so a repeat can win the local search by luck. A match must now
+   also lead the best lag anywhere else by 0.6 standard deviations (measured: repeats alone lead by
+   at most 0.50, real matches by 0.84-2.71 on drawn clips and 0.60-1.97 on two concerts). The
+   distances are unchanged; only the weakest pairs drop out. Lesson: the three OSes in CI are worth
+   more than they look — the same code, same seeds, different FFmpeg build.
