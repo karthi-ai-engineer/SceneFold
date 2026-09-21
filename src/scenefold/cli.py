@@ -10,6 +10,8 @@ from pathlib import Path
 from scenefold.cut import CUT_NAME, FILM_NAME, CutError, Film, cut_event
 from scenefold.evaluate import FRAME_S, EvaluationError, evaluate_event
 from scenefold.ingest import IngestError, InputResult, Outcome, ingest
+from scenefold.observations import OBSERVATIONS_DIR, WatchSettings
+from scenefold.observe import WatchError, observe_event
 from scenefold.picture_offset import metres
 from scenefold.sync import SyncError, sync_event
 from scenefold.timeline import TIMELINE_NAME, ClipPlacement, Timeline
@@ -83,6 +85,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=Path("data"),
         help="folder that holds event workspaces (default: ./data)",
     )
+    observe_parser = commands.add_parser(
+        "observe",
+        help="ask a model what each clip shows",
+        description="Watch every clip a few seconds at a time and write down what it shows, into "
+        "<data-dir>/<event>/observations/. Each clip is watched on its own, so two angles stay two "
+        "independent witnesses. The model runs on this computer: no footage is uploaded anywhere.",
+    )
+    observe_parser.add_argument("event", help="event name used with ingest, e.g. match-01")
+    observe_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="folder that holds event workspaces (default: ./data)",
+    )
+    observe_parser.add_argument(
+        "--model", default=WatchSettings().model, help="the model to ask, as Ollama names it"
+    )
+    observe_parser.add_argument(
+        "--window",
+        type=float,
+        default=WatchSettings().window_s,
+        help="seconds each observation covers (default: %(default)s)",
+    )
+    observe_parser.add_argument(
+        "--again",
+        action="store_true",
+        help="watch clips again that were already watched with the same model and question",
+    )
     cut_parser = commands.add_parser(
         "cut",
         help="edit the angles into one film",
@@ -131,6 +161,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "ingest": _run_ingest,
         "sync": _run_sync,
         "evaluate": _run_evaluate,
+        "observe": _run_observe,
         "cut": _run_cut,
         "view": _run_view,
     }
@@ -237,6 +268,34 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         f"  within one frame ({frame_ms:.0f} ms): {result.within_frame} of {len(result.errors)} "
         f"({share:.0%})"
     )
+    return 0
+
+
+def _run_observe(args: argparse.Namespace) -> int:
+    settings = WatchSettings(model=args.model, window_s=args.window)
+    try:
+        watched = observe_event(
+            args.event,
+            data_dir=args.data_dir,
+            settings=settings,
+            again=args.again,
+            progress=_print_step,
+        )
+    except WatchError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("\ninterrupted; finished clips are saved, run the same command to continue")
+        return 130
+    seen = sum(len(clip.observations) for clip in watched if clip)
+    took = sum(clip.seconds_taken for clip in watched if clip)
+    print(f"\nEvent {args.event}: {seen} observations from {len(watched)} clips, {took:.0f} s")
+    for clip in watched:
+        if clip is None or not clip.observations:
+            continue
+        first = clip.observations[0]
+        print(f"  {clip.name} ({len(clip.observations)}): {first.summary[:90]}")
+    print(f"Observations: {Path(args.data_dir) / args.event / OBSERVATIONS_DIR}")
     return 0
 
 

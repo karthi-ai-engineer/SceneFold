@@ -52,7 +52,7 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 318 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 330 passed, 1 xfailed (the known chorus limit)
 node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+)
 ```
 
@@ -401,3 +401,31 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 2. Loose ends carried forward: no progress post for v0.1.0; the Nexus S still disagrees with Jiku's
    published ground truth by 70-110 ms; other nights are reported but not placed; edited uploads
    with cuts cannot be placed; `tools/check_viewer.py` needs a quiet machine to trust a red result.
+
+### Session 8: 2026-09-21, Acer Predator
+
+1. **Phase 5 started** (branch `phase-5-understanding`): `scenefold observe <event>` asks a model
+   what each clip shows, a few seconds at a time, into `observations/<clip_id>.json` in clip-local
+   time. `src/scenefold/observations.py` is the contract, `observe.py` does the watching.
+2. **The provider question is settled by the machine**: Karthi already had Ollama with
+   `qwen3.5:4b` (4.7B, vision, Apache-2.0, ~3.4 GB). It answers a four-frame window in about three
+   seconds, costs nothing, and no footage leaves the computer — which matters because the test
+   footage is of people who agreed to be filmed by a friend, not uploaded. The Gemini decision in
+   the roadmap is replaced; a cloud adapter is one small class (`observe.Watcher`) when wanted.
+3. **What the 4B model can and cannot do, measured before designing around it:** it describes what
+   is in front of it well and reads on-screen text (it read the demo's burnt-in clock exactly), but
+   it invents counts ("5,000 people") and always rates itself 1.0. So it is never asked to count,
+   and each observation carries the picture score from `quality.py` instead of the model's opinion
+   of itself.
+4. Ollama takes a JSON schema (`format`), which makes the answers well-formed every time; the
+   parser still falls back to keeping plain words if a model ever answers in prose.
+5. Measured on `coldplay-jan26` (5 clips, ~20 minutes of footage, 12 s windows): 91 observations
+   in 338 s of model time on an idle machine — about one second of model time per 3.5 seconds of
+   video. Watching it again asked nothing. Beware measuring while the machine is busy: one clip
+   took 1220 s while the test suite ran alongside it, and 64 s when re-watched on its own.
+6. Two things to watch in the model's answers: it says "a Coldplay concert" although it is told
+   never to guess names (it may be reading the stage, or it may be guessing), and long summaries
+   repeat the same scene-setting phrases across neighbouring windows. Both are prompt work.
+7. Left in Phase 5: speech with word-level timing (faster-whisper), snapping the model's
+   second-level times to audio onsets and motion peaks, and measuring recall — which needs the
+   hand-labelled test event Karthi has yet to film. The simulator has no section for this step yet.

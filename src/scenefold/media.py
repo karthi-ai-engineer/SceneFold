@@ -329,6 +329,33 @@ class ProxyResult:
     issues: list[Issue] = field(default_factory=list)
 
 
+def jpeg_frames(path: Path, width: int, fps: float) -> list[bytes]:
+    """Still pictures from a video, `fps` a second, each shrunk to `width`, as JPEG bytes.
+
+    One decode pass for the whole clip, which is far cheaper than asking FFmpeg for one frame at a
+    time. These are what a model is shown (observe.py), so they are small: a 640-wide frame is
+    about 30 KB.
+    """
+    proc = _run_binary(
+        ["-nostdin", "-i", str(path), "-vf", f"fps={fps},scale={width}:-2",
+         "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "4", "-"]
+    )  # fmt: skip
+    if proc.returncode != 0:
+        stderr = proc.stderr.decode("utf-8", errors="replace")
+        raise ProxyError(f"could not take frames from {path.name}: {error_summary(stderr)}")
+    # JPEGs arrive glued together; inside one, a literal 0xFF byte is always followed by 0x00, so
+    # the end marker only ever means the end of a picture.
+    return [piece + b"\xff\xd9" for piece in proc.stdout.split(b"\xff\xd9")[:-1]]
+
+
+def _run_binary(args: list[str]) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        [find_tools().ffmpeg, "-v", "error", *args],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+    )
+
+
 def render(args: list[str]) -> str | None:
     """Run FFmpeg with these arguments. None when it worked, else what went wrong, in short."""
     proc = _run([find_tools().ffmpeg, "-hide_banner", "-v", "error", "-nostdin", "-y", *args])

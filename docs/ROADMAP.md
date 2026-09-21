@@ -15,7 +15,7 @@ Last updated: 2026-09-21
 | 2b | Place the pictures, not the sound arrival | 2 | ~1 | Done: measured in sync, and the viewer can hold the pictures together |
 | 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Done: viewer within half a frame, checked on the pictures too, demo event and README GIF |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Done: `scenefold cut` scores, chooses shots, renders the film, and the viewer plays it |
-| 5 | Clip understanding | 4 | 2 | Not started |
+| 5 | Clip understanding | 4 | 2 | In progress: `scenefold observe` watches every clip with a local model; speech and recall left |
 | 6 | Event knowledge + conflicts | 6, 8 | 2 | Not started |
 | 7 | Story + Q&A → **v0.5.0** | 7, 10 | 1–2 | Not started |
 | 8 | Cross-angle identity | 5 | 2–3 | Not started |
@@ -452,8 +452,30 @@ were checked against the sound, and the README shows the viewer. Tagged `v0.1.0`
 - Every test-event clip produces schema-valid observations; a re-run makes zero API calls.
 - Event recall is measured on the hand-labeled test event; cost per event is reported.
 
-**Decision: Gemini free vs. paid tier.** Free-tier content may be used by Google and read by human reviewers.
-Recommendation: paid tier (well under 1 cent per 30 s clip), or only consenting footage on free tier.
+**Progress (2026-09-21)**
+- `scenefold observe <event>` writes `observations/<clip_id>.json` per clip, in clip-local time:
+  `observations.py` is the contract, `observe.py` does the watching, 12 tests run without a model.
+- Measured on `coldplay-jan26` (5 clips, ~20 minutes of footage, 12 s windows): 91 observations in
+  338 s of model time, about one second of model time per 3.5 seconds of video. A second run asks
+  nothing. The descriptions follow change across a window ("the stage lighting shifts from blue to
+  green while the view zooms in"), which is why a window is four frames rather than one.
+- Still to do here: speech with word-level timing, snapping times to audio onsets and motion peaks,
+  and recall against a hand-labelled event (which needs the test event filmed with friends).
+
+**Decision (2026-09-21): a model on this computer, not a cloud one.** Karthi already had Ollama
+with `qwen3.5:4b` — 4.7B parameters, vision, Apache-2.0, quantised to about 3.4 GB. It answers in
+about 3 seconds for a window of four frames on the Predator. That settles the Gemini free-vs-paid
+question by not asking it: no footage leaves the machine, nothing costs anything, and the licence
+fits this repo. Most of the test footage is of people who agreed to be filmed by a friend, not to
+be uploaded to anyone's API. A cloud adapter can come later for consenting footage; the provider
+interface is one small class (`observe.Watcher`).
+
+**What a 4B model is good and bad at, measured on real concert frames.** Good: saying what is in
+front of it ("a wide shot of a crowd holding up glowing lights", "a hand waving in the
+foreground"), and it reads on-screen text (it read the drawn demo's burnt-in clock exactly).
+Bad: counting (it answered "5,000 people" to anything crowded) and judging itself (it answered
+confidence 1.0 every single time). So it is never asked to count, and how far to trust a window
+comes from the picture score (`quality.py`), not from the model's opinion of itself.
 
 ---
 

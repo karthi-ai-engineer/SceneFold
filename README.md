@@ -42,6 +42,7 @@ data/<event>/
 ├─ proxies/        working copies (<clip>.mp4) and their sound (<clip>.wav)
 ├─ manifest.json   what each clip is, where its files are, and any problems
 ├─ timeline.json   where each clip sits on the shared clock          (sync)
+├─ observations/   what each clip shows, one file per clip           (observe)
 └─ cut.json, cut.mp4   the shot list, with a reason each, and the film  (cut)
 ```
 
@@ -122,8 +123,32 @@ best *sequence of shots*, not the best angle second by second.
   gained"), and `cut.mp4` is the film. `--plan-only` writes the shot list without rendering.
 
 **Known limits.** Footage outside the microphone clip's span isn't used — the price of never
-cutting the sound. Nothing yet knows what is *in* the picture, so a sharp shot of the floor beats a
-shaky shot of the moment everyone came for; that arrives with the later phases.
+cutting the sound. The cut doesn't yet use what is *in* the picture, so a sharp shot of the floor
+beats a shaky shot of the moment everyone came for; that arrives when the observations below feed
+the cut.
+
+## What observing does
+
+`scenefold observe <event>` asks a model what each clip shows, a few seconds at a time, and writes
+it to `observations/<clip_id>.json` — times in that clip's own seconds, so re-running sync never
+invalidates them.
+
+- **It runs on your computer.** The default is `qwen3.5:4b` through [Ollama](https://ollama.com):
+  about 3 seconds per window on a laptop GPU, no cost, and no footage leaves the machine. That
+  matters, because most footage is of people who agreed to be filmed by a friend, not to be
+  uploaded to anyone's API. Any other model is one small class (`observe.Watcher`).
+- **Each clip is watched alone**, so two angles of one moment stay two independent witnesses. A
+  disagreement between them only means something if neither account was written with the other in
+  view.
+- **Nothing is taken as true.** Each observation is kept with a reason to doubt it: how good the
+  picture was over that window, which model said it, and when. Small models are confident about
+  everything, so their self-rated confidence is not recorded — the picture score is.
+- Running it again costs nothing: clips already watched with the same model and the same question
+  are left alone (`--again` overrides).
+
+```sh
+uv run scenefold observe my-event            # needs `ollama pull qwen3.5:4b` once
+```
 
 ## Requirements
 
@@ -288,7 +313,8 @@ git config core.hooksPath .githooks
 ```
 src/scenefold/   pipeline code: cli, ingest, media (FFmpeg), manifest and timeline (data formats),
                  audio_offset and picture_offset (matching clips by sound and by light), sync,
-                 evaluate (sync error), quality and cut (the film), view (server)
+                 evaluate (sync error), quality and cut (the film), observe and observations
+                 (what each clip shows), view (server)
 tests/           tests
 tools/           developer scripts, e.g. fetching a public dataset to measure sync on real footage
 web/             the viewer: plain HTML, CSS and JavaScript modules, no build step
