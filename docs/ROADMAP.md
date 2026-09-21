@@ -19,7 +19,7 @@ Last updated: 2026-09-21
 | 6 | Event knowledge + conflicts | 6, 8 | 2 | Done: clips merged into events with evidence, and disagreements found twice over |
 | 7 | Story + Q&A → **v0.5.0** | 7, 10 | 1–2 | Built: cited story and questions, every sentence checked in code. Tag held back until faithfulness is checked by hand |
 | 8 | Cross-angle identity | 5 | 2–3 | Built and merged: matching from what the clips say people are wearing, no new dependency. Accuracy on real footage waits on a hand-labelled event |
-| 9 | Smart cut + release → **v1.0.0** | 9 | 2 | Not started |
+| 9 | Smart cut + release → **v1.0.0** | 9 | 2 | Built: the cut reads the event store, the viewer shows every disagreement, the README carries the numbers. Tag withheld until the hand-labelled event exists |
 
 **Why this order differs from the brief's roadmap:** identity (Phase 8) is the riskiest, most research-heavy part.
 The story and disagreement features can work first with the AI's own descriptions ("person in red"), so a full
@@ -660,13 +660,46 @@ best matches what is in the footage.
 **Brief outcome:** 9 · **Runs on:** CPU + API
 
 **Steps**
-- Cut scoring adds event importance, subject size and framing, and following identities through the action.
-- Final UI pass: camera colors used consistently everywhere; event graph view.
-- README: demo video/GIF, architecture diagram, metrics table (sync error, matching accuracy, cost per event),
-  limitations, responsible use.
+- ~~Cut scoring adds event importance~~ `interest.py`: how much happened each second, weighted by
+  how many phones caught it, and how much of that each angle has evidence for. Added to the picture
+  score at a weight of 0.5, which is what it takes to cover both the picture gap (0.1–0.3) and the
+  0.95 a cut in and back out costs. Cutting across a moment now costs more than cutting before it.
+- *(not done)* Subject size and framing, and following identities through the action. Both wait on
+  the same thing Phase 8 does: identity accuracy nobody has measured. A wrong identity here only
+  makes a worse cut, but it would still be building on sand.
+- ~~Final UI pass~~ Camera colours were already threaded through every tab. The gap was that the
+  91 disagreements had nowhere to be seen: a panel now lists them with both accounts side by side,
+  and clicking one plays that second.
+- ~~README~~ Status, a diagram of the chain, a table of every measurement beside the footage it
+  came from, the quick start extended to the whole chain, and both worked examples replaced with
+  real output.
+
+**Measured on the concert** (five phones, 5:08 of film, 311 moments known):
+
+| | Picture alone | Knowing what happened |
+|---|---|---|
+| Shots | 13 | 10 |
+| Longest angle's share | 38% | 32% |
+| Shots chosen for being pointed at the moment | — | 3 of 10 |
+
+On the drawn demo event the film does not change at all, and that is the right answer: every clip
+films the same show, so every angle saw everything (shares of 0.92–0.95, against 0.16–0.75 on real
+phones pointed different ways). The knowledge only speaks where the angles actually differ.
 
 **Done when**
 - A newcomer can do everything in brief §16 "Definition of Success". Tag `v1.0.0`.
+  *All five work: drop in videos, watch them in sync, read a cited account, see where the videos
+  disagree and why, watch an edited version. The tag is still **withheld**, and the reason is not
+  missing features.*
+
+**Why `v1.0.0` is not tagged.** The brief's success test ends with a newcomer thinking *"I
+understand this event better than any single video could show me."* Three things this project says
+are not checked: whether a sentence that cites a real moment describes it truthfully, whether the
+91 flagged disagreements are real ones, and whether a person matched across angles is the right
+person. Every one needs an event where somebody already knows what happened — the hand-labelled
+event Phases 5, 6 and 7 are also waiting on. Tagging a version that claims trustworthiness while
+its three trust claims are unverified would be exactly the failure this project exists to avoid.
+The README says so in the open, with the numbers, rather than in a footnote.
 
 ---
 

@@ -67,7 +67,7 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 
 ---
 
-## Where things stand (session 10, 2026-09-21)
+## Where things stand (session 11, 2026-09-21)
 
 | Phase | Status | Where |
 |---|---|---|
@@ -80,7 +80,7 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 | 6 Event knowledge | Done: `scenefold fuse` merges the clips into events with evidence, and finds disagreements twice over (arithmetic, then the model reading the accounts) | `main` |
 | 7 Story + Q&A | Built: `scenefold story` and `scenefold ask`, every sentence checked in code against the footage. **`v0.5.0` not tagged** — it waits on somebody watching footage they know and saying whether the sentences are true | `main` |
 | 8 Cross-angle identity | Built: `scenefold people` + `scenefold identify` match people by what the clips say they are wearing, and say when the descriptions cannot be trusted. Whether each match is the *right* person is not measured | `main` (merged from `phase-8-identity`) |
-| 9 Smart cut + release | **Next** | not started |
+| 9 Smart cut + release | Built: the cut reads the event store, the viewer shows every disagreement, the README carries the numbers. **`v1.0.0` withheld** until somebody can check the story, the disagreements and the identities against an event they know | `phase-9-smart-cut` |
 
 - Results and findings: `docs/ROADMAP.md`, Phase 2 "Progress". In short: on two real Jiku subsets,
   5 of 6 phones agree with the published ground truth within 6.4 ms (174 s overlaps) and 26 ms
@@ -527,3 +527,34 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    model described people on stage well and described others in ways no frame supported, and a match
    between two consistent mistakes still matches. Only the hand-labelled event can settle it. The
    roadmap's remaining Phase 8 steps (re-running fusion with shared entities) are not done.
+
+### Session 11: 2026-09-21, Acer Predator
+
+1. **Phase 9** on `phase-9-smart-cut`. `interest.py`: the cut now reads the event store as well as
+   the picture. How much happened each second (weighted by how many phones caught it) and how much
+   of that each angle has evidence for, added to the picture score at 0.5.
+2. **Why 0.5 and not less.** It has to cover the picture gap between the best angle and the next
+   (0.1–0.3 on real footage) *and* the 0.95 that cutting in and back out costs. Below about 0.4 it
+   changes nothing at all. Half the picture's own weight is the ceiling: the store is a small
+   model's descriptions, and a film that followed them further would follow an opinion over its
+   own eyes.
+3. On the concert: 13 shots → 10, one angle gained 21 s, 3 of 10 shots chosen for being pointed at
+   the moment. On the drawn event **nothing changes**, which is the right answer — every clip films
+   the same show, so every angle saw everything (shares 0.92–0.95, against 0.16–0.75 on real
+   phones). Worth remembering when testing: the drawn event cannot show this feature working.
+4. **The viewer had nowhere to see the 91 disagreements** — the fourth of the brief's five things a
+   newcomer should be able to do. A panel in the report tab now lists them with both accounts side
+   by side; `/api/events?conflicts=1` narrows the store. Bursts of moments half a second apart with
+   the same accounts collapse into one row marked "4×" (91 moments → 74 arguments).
+5. **README rewritten.** The status section still said a cited account was a later phase. It now
+   draws the chain, puts every measurement in one table beside the footage it came from, and runs
+   the quick start through all eleven commands. Both worked examples were **invented**; they are
+   now real output. A README that makes up its own output is the one thing this project cannot do.
+6. **`v1.0.0` is deliberately not tagged.** All five of the brief's success criteria work. Three
+   claims are unverified: story faithfulness, whether the 91 disagreements are real, and whether a
+   matched person is the right one. All three need the hand-labelled event. Tagging a version that
+   claims trustworthiness while its trust claims are unchecked would be the exact failure this
+   project exists to avoid. `docs/ROADMAP.md` Phase 9 says so in full.
+7. The one thing blocking `v0.5.0`, `v1.0.0`, and three phases' "done when" is the same: **an event
+   filmed by 3–5 friends with distinct clothes, a few claps, and a written note of what happened.**
+   `README.md` → Responsible use now describes exactly how to film it.
