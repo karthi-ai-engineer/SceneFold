@@ -4,6 +4,8 @@ No model is run here. A pretend one answers with the shapes a real one produces,
 unhelpful ones — a crowd, a refusal, a paragraph instead of a person.
 """
 
+import json
+
 import pytest
 import synth
 from conftest import needs_ffmpeg, run_ffmpeg
@@ -136,8 +138,9 @@ def test_only_so_many_people_are_taken_from_one_frame(event):
     asked = watch_people(
         "who-was-there", data_dir=event, settings=settings, looker=FakeWatcher(a_stadium)
     )
-    windows = {(s.t_start_s, s.t_end_s) for s in asked[0].people}
-    assert len(asked[0].people) == 2 * len(windows)
+    first = next(clip for clip in asked if clip.name == "one.mp4")
+    windows = {(s.t_start_s, s.t_end_s) for s in first.people}
+    assert len(first.people) == 2 * len(windows)
 
 
 @needs_ffmpeg
@@ -152,8 +155,7 @@ def test_descriptions_that_pick_out_nobody_are_dropped(event, tmp_path):
             ]
         }
 
-    video = next((event / "who-was-there" / "proxies").glob("*.mp4"))
-    found, _ = see_people(video, 8.0, SETTINGS, FakeWatcher(vague))
+    found, _ = see_people(_video(event, "two.mp4"), 8.0, SETTINGS, FakeWatcher(vague))
     assert found
     assert {s.wearing for s in found} == {"a green jacket"}
 
@@ -165,22 +167,31 @@ def test_a_window_the_model_fails_on_does_not_lose_the_clip(event):
             raise ValueError("the model said something unreadable")
         return _crowd(n)
 
-    video = next((event / "who-was-there" / "proxies").glob("*.mp4"))
-    found, _ = see_people(video, 12.0, SETTINGS, FakeWatcher(sometimes))
+    found, _ = see_people(_video(event, "one.mp4"), 12.0, SETTINGS, FakeWatcher(sometimes))
     assert len(found) == 4  # three windows, one of them lost, two people in each of the rest
     assert {s.t_start_s for s in found} == {0.0, 8.0}
 
 
 @needs_ffmpeg
 def test_an_answer_with_nobody_in_it_is_an_answer(event):
-    video = next((event / "who-was-there" / "proxies").glob("*.mp4"))
-    found, took = see_people(video, 8.0, SETTINGS, FakeWatcher(lambda _: {"people": []}))
+    found, took = see_people(
+        _video(event, "two.mp4"), 8.0, SETTINGS, FakeWatcher(lambda _: {"people": []})
+    )
     assert found == []
     assert took >= 0
 
 
-def _a_clip_id(data_dir):
-    import json
-
+def _a_clip_id(data_dir, name="one.mp4"):
     manifest = json.loads((data_dir / "who-was-there" / "manifest.json").read_text())
-    return next(c["clip_id"] for c in manifest["clips"] if c["source"]["name"] == "one.mp4")
+    return next(c["clip_id"] for c in manifest["clips"] if c["source"]["name"] == name)
+
+
+def _video(data_dir, name="one.mp4"):
+    """The working copy of one named clip.
+
+    By name, never by whichever file a glob happens to return first: the two clips are different
+    lengths, so a glob makes the window arithmetic depend on the filesystem's ordering, and these
+    tests then pass on one machine and fail on another. CI found this on Linux.
+    """
+    clip_id = _a_clip_id(data_dir, name)
+    return data_dir / "who-was-there" / "proxies" / f"{clip_id}.mp4"
