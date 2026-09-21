@@ -212,6 +212,7 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
     <li><a href="#output"><span>7</span>Output</a></li>
     <li><a href="#viewer"><span>8</span>Watch together</a></li>
     <li><a href="#sound"><span>9</span>Sound travels</a></li>
+    <li><a href="#cut"><span>10</span>Cut the film</a></li>
   </ol>
 </nav>
 
@@ -448,9 +449,35 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
     </div>
   </section>
 
+  <section class="stage" id="cut">
+    <div class="stage-head">
+      <div class="where">src/scenefold/quality.py · cut.py — <code>scenefold cut</code></div>
+      <h2>10. Cut the angles into one film</h2>
+      <p>Each second of each clip is scored on how good its picture is: sharp, steady, well exposed. Then the whole film is planned at once. A cut has to earn its keep, a shot has to last a few seconds, and cutting straight back to the angle you just left costs extra. Drag the dials and watch the film rebuild itself: cheap cuts give a restless film, dear ones a slow one.</p>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <label class="field">A cut must gain <output id="cut-cost-out" class="num">0.35</output>
+          <input type="range" id="cut-cost" min="0" max="1.2" step="0.05" value="0.35">
+        </label>
+        <label class="field">Shortest shot <output id="cut-min-out" class="num">3 s</output>
+          <input type="range" id="cut-min" min="1" max="10" step="1" value="3">
+        </label>
+        <label class="field inline"><input type="checkbox" id="cut-return" checked>Cutting back to the angle before last costs more</label>
+        <button id="cut-run" class="primary">▶ Cut the film</button>
+        <span class="note" id="cut-status"></span>
+      </div>
+      <div class="fig-title"><span>How good each angle looks, second by second. Grey where it wasn't recording; the outline is what the film shows.</span></div>
+      <canvas id="cut-strips" class="chart" width="1080" height="260" aria-label="Picture quality of every angle over time, with the chosen shots outlined"></canvas>
+      <div class="fig-title"><span>The film, and why each shot was chosen</span></div>
+      <canvas id="cut-film" class="chart" width="1080" height="90" aria-label="The cut film as a strip of shots"></canvas>
+      <div class="table-wrap"><table class="data" id="cut-table"></table></div>
+    </div>
+  </section>
+
   <footer>
     <div>Imaginary data, invented in your browser. Sound is simulated at 1,000 samples per second (the real code uses 8,000) so every step runs live.</div>
-    <div>Next phase to add here: the quality cut (Phase 4).</div>
+    <div>Next phase to add here: what each clip shows (Phase 5).</div>
   </footer>
 </main>
 <div id="tip" hidden></div>
@@ -2012,6 +2039,208 @@ STAGES.sound = (() => {
   });
 
   return { reset() { heard = 0; render(); }, render };
+})();
+
+/* ================= 10. cut the angles into one film (quality.py, cut.py) ================= */
+STAGES.cut = (() => {
+  const strips = $("cut-strips"), film = $("cut-film");
+  const MAX_SHOT_S = 12, RETURN_COST = 0.25;
+  let plan = null;
+
+  /* Invented picture quality: a slow wander, as a phone drifts in and out of focus, shade and
+     steadiness. The real code measures sharpness, steadiness and exposure (quality.py). */
+  function quality(ph, seconds) {
+    const r = rng(ph.seed * 31 + 7), out = [];
+    let value = 0.3 + 0.5 * r();
+    for (let t = 0; t < seconds; t++) {
+      value = Math.max(0.05, Math.min(0.98, value + (r() - 0.5) * 0.22));
+      out.push(value);
+    }
+    return out;
+  }
+
+  /* The angles on the master clock, NaN where a clip was not recording (cut.py's _on_master). */
+  function angles(solution) {
+    const placed = S.event.phones.filter((ph) => ph.related && ph.clip_id in solution.offsets);
+    if (!placed.length) return null;
+    const mic = placed.reduce((best, ph) => (ph.seconds > best.seconds ? ph : best));
+    const start = solution.offsets[mic.clip_id];
+    const seconds = Math.floor(mic.seconds);
+    return {
+      mic, start, seconds,
+      list: placed.map((ph) => {
+        const own = quality(ph, Math.ceil(ph.seconds));
+        const rate = 1 + (solution.drift_ppm[ph.clip_id] ?? 0) * 1e-6;
+        const scores = [];
+        for (let t = 0; t < seconds; t++) {
+          const local = (start + t - solution.offsets[ph.clip_id]) * rate;
+          scores.push(local >= 0 && local + rate <= own.length ? own[Math.floor(local)] : NaN);
+        }
+        return { ph, scores };
+      }),
+    };
+  }
+
+  /* The same plan as cut.py: pieces of 3-12 s, a piece may hold the angle before it (free), a cut
+     costs, and cutting back to the angle before last costs more. Every way is weighed at once. */
+  function choose(list, seconds, { minShot, cutCost, returnCost }) {
+    const sums = list.map(({ scores }) => {
+      const out = [0];
+      for (const s of scores) out.push(out[out.length - 1] + (Number.isNaN(s) ? 0 : s));
+      return out;
+    });
+    const best = Array.from({ length: seconds + 1 }, () => new Map());
+    best[0].set("-1,-1", { value: 0, piece: null, from: null });
+    for (let end = 1; end <= seconds; end++) {
+      for (let i = 0; i < list.length; i++) {
+        for (let length = minShot; length <= MAX_SHOT_S; length++) {
+          const first = end - length;
+          if (first < 0) continue;
+          if (list[i].scores.slice(first, end).some(Number.isNaN)) continue;
+          const gained = sums[i][end] - sums[i][first];
+          for (const [key, state] of best[first]) {
+            const [previous, before] = key.split(",").map(Number);
+            const held = previous === i;
+            let cost = held || first === 0 ? 0 : cutCost;
+            if (!held && before === i) cost += returnCost;
+            const value = state.value + gained - cost;
+            const next = `${i},${held ? before : previous}`;
+            if (!best[end].has(next) || value > best[end].get(next).value) {
+              best[end].set(next, { value, piece: [i, first, end], from: key });
+            }
+          }
+        }
+      }
+    }
+    if (!best[seconds].size) return [];
+    let key = [...best[seconds].keys()].reduce((a, b) =>
+      best[seconds].get(a).value >= best[seconds].get(b).value ? a : b);
+    const pieces = [];
+    for (let at = seconds; at > 0; ) {
+      const state = best[at].get(key);
+      pieces.unshift(state.piece);
+      at = state.piece[1];
+      key = state.from;
+    }
+    const shots = [pieces[0]];
+    for (const [i, first, end] of pieces.slice(1)) {
+      if (i === shots[shots.length - 1][0]) shots[shots.length - 1][2] = end;
+      else shots.push([i, first, end]);
+    }
+    return shots;
+  }
+
+  function reasonFor(shots, list, index) {
+    const [i, first, end] = shots[index];
+    const mean = (scores) => {
+      const inside = scores.slice(first, end).filter((v) => !Number.isNaN(v));
+      return inside.length ? inside.reduce((a, b) => a + b, 0) / inside.length : NaN;
+    };
+    const rivals = list.filter((_, position) => position !== i).map((a) => mean(a.scores));
+    const seen = rivals.filter((v) => !Number.isNaN(v));
+    const alone = [...Array(end - first)].filter((_, k) =>
+      list.every((a, position) => position === i || Number.isNaN(a.scores[first + k]))).length;
+    if (!seen.length || alone > (end - first) / 2) return "the only angle recording";
+    if (mean(list[i].scores) < Math.max(...seen)) return "kept rolling: cutting away would have cost more";
+    return "best picture of the angles recording";
+  }
+
+  async function run() {
+    const solution = await STAGES.solve.ensure();
+    const found = angles(solution);
+    if (!found) { plan = null; render(); return; }
+    const settings = {
+      minShot: +$("cut-min").value,
+      cutCost: +$("cut-cost").value,
+      returnCost: $("cut-return").checked ? RETURN_COST : 0,
+    };
+    const shots = choose(found.list, found.seconds, settings);
+    plan = { ...found, shots, reasons: shots.map((_, i) => reasonFor(shots, found.list, i)) };
+    render();
+  }
+
+  function drawStrips() {
+    const g = setup(strips);
+    if (!plan) {
+      g.fontPx(13); g.fillStyle = css("--muted"); g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("Press ▶ to cut the film.", strips._w / 2, strips._h / 2);
+      return;
+    }
+    const box = { l: 130, r: strips._w - 16, t: 16, b: strips._h - 26 };
+    const X = (t) => box.l + (t / plan.seconds) * (box.r - box.l);
+    const rowH = (box.b - box.t) / plan.list.length;
+    plan.list.forEach(({ ph, scores }, i) => {
+      const y = box.t + i * rowH;
+      g.fillStyle = css("--ink-2"); g.fontPx(12); g.textAlign = "right"; g.textBaseline = "middle";
+      g.fillText(ph.name, box.l - 10, y + rowH / 2);
+      for (let t = 0; t < plan.seconds; t++) {
+        const score = scores[t];
+        g.fillStyle = css("--grid");
+        if (!Number.isNaN(score)) {
+          g.fillStyle = colorOf(ph);
+          g.globalAlpha = 0.25 + 0.75 * score;
+        }
+        g.fillRect(X(t), y + 4, Math.max(1, X(t + 1) - X(t) - 0.5), rowH - 12);
+        g.globalAlpha = 1;
+      }
+    });
+    g.strokeStyle = css("--ink"); g.lineWidth = 2;
+    for (const [i, first, end] of plan.shots) {
+      g.strokeRect(X(first), box.t + i * rowH + 2, X(end) - X(first), rowH - 8);
+    }
+    g.lineWidth = 1;
+    g.fillStyle = css("--muted"); g.fontPx(11); g.textAlign = "center"; g.textBaseline = "top";
+    for (const t of niceTicks(0, plan.seconds, 8)) g.fillText(`${t}s`, X(t), box.b + 6);
+  }
+
+  function drawFilm() {
+    const g = setup(film);
+    if (!plan) return;
+    const box = { l: 130, r: film._w - 16, t: 16, b: film._h - 24 };
+    const X = (t) => box.l + (t / plan.seconds) * (box.r - box.l);
+    g.fillStyle = css("--ink-2"); g.fontPx(12); g.textAlign = "right"; g.textBaseline = "middle";
+    g.fillText("the film", box.l - 10, (box.t + box.b) / 2);
+    plan.shots.forEach(([i, first, end]) => {
+      const ph = plan.list[i].ph;
+      g.fillStyle = colorOf(ph);
+      g.fillRect(X(first) + 1, box.t, Math.max(2, X(end) - X(first) - 2), box.b - box.t);
+      if (X(end) - X(first) > 60) {
+        g.fillStyle = "#101113"; g.fontPx(11, 600); g.textAlign = "left"; g.textBaseline = "middle";
+        g.fillText(ph.name, X(first) + 8, (box.t + box.b) / 2);
+      }
+    });
+    $("cut-status").textContent =
+      `${plan.shots.length} shots, ${plan.seconds} s, sound from ${plan.mic.name}`;
+  }
+
+  function drawTable() {
+    if (!plan) { $("cut-table").innerHTML = ""; return; }
+    const rows = plan.shots.map(([i, first, end], k) => `<tr>
+      <td><span class="swatch" style="background:${colorOf(plan.list[i].ph)}"></span>${esc(plan.list[i].ph.name)}</td>
+      <td class="num">${fmt(first, 0)}–${fmt(end, 0)} s</td>
+      <td class="num">${fmt(end - first, 0)} s</td>
+      <td>${esc(plan.reasons[k])}</td></tr>`).join("");
+    $("cut-table").innerHTML =
+      `<thead><tr><th>Angle</th><th>When</th><th>Long</th><th>Why</th></tr></thead><tbody>${rows}</tbody>`;
+  }
+
+  function render() { drawStrips(); drawFilm(); drawTable(); }
+
+  $("cut-run").addEventListener("click", async () => {
+    const button = $("cut-run"); // not e.currentTarget: it is gone by the time the await returns
+    setBusy(button, true, "cutting…");
+    await run();
+    setBusy(button, false, "▶ Cut the film");
+  });
+  for (const [id, out, suffix] of [["cut-cost", "cut-cost-out", ""], ["cut-min", "cut-min-out", " s"]]) {
+    $(id).addEventListener("input", () => {
+      $(out).textContent = $(id).value + suffix;
+      if (plan) run();
+    });
+  }
+  $("cut-return").addEventListener("change", () => { if (plan) run(); });
+
+  return { reset() { plan = null; render(); }, render };
 })();
 
 /* ================= boot ================= */

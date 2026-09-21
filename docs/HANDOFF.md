@@ -351,3 +351,26 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
     regression. Re-run it on an idle machine before trusting a red result.
 15. Phase 2b merged into `main` (CI green) and the branch deleted. 291 tests pass, plus 15 viewer
     timing tests. No version tag: v0.1.0 stands until the next milestone phase.
+
+### Session 7: 2026-09-21, Acer Predator
+
+1. **Phase 4, the quality cut** (branch `phase-4-cut`). `src/scenefold/quality.py` measures each
+   second of each clip — sharpness (detail in the frame), steadiness (how far the whole picture
+   shifts, found by phase correlation, so a subject crossing a steady frame costs nothing) and
+   exposure — then stretches each measure over the range the event itself shows.
+2. `src/scenefold/cut.py` plans the film in one pass of dynamic programming over pieces of 3-12 s,
+   with a cut costing 0.35, a cut back to the angle before last costing 0.25 more, and a free
+   "hold" that merges into one shot. The hold matters: without it a stretch filmed by one phone
+   alone cannot be covered, because there is no second angle to cut to — the first version failed
+   exactly there and fell back to nonsense.
+3. Sound comes from one clip unbroken (longest, then nearest to the sound); each shot carries the
+   `speed` that puts it on that clip's clock, so picture and sound hold together over a long film.
+4. Measured: 13 shots over 5:08 on `coldplay-jan26` (51 s to look at 20 minutes of footage, 216 s
+   including the render); on the drawn demo the clock burnt into the picture reads 30.467 s at 30 s
+   into the film, so the shots land on the right frames. 310 tests pass.
+5. Two bugs worth remembering, both found by tests: `int()` truncates towards zero, so a clip
+   looked available half a second before its first frame (now a clip must cover the whole second);
+   and a generator that reads FFmpeg's output must not report "broken pipe" as a bad file when the
+   caller simply stopped early.
+6. `docs/simulation.html` gained section 10, which runs the same shot-planning rules on invented
+   scores with dials for the cut cost and the shortest shot.

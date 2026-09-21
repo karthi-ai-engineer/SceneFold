@@ -12,9 +12,10 @@ and trustworthy picture of what happened.**
 
 ## Status
 
-Early development. **Ingest, sync, and a synced multi-angle viewer work today.** Later phases add a
-cited story of the event, where the cameras disagree, and an automatic edit. See the
-[roadmap](docs/ROADMAP.md) and the [project brief](docs/PROJECT_BRIEF.md).
+Early development. **Ingest, sync, a synced multi-angle viewer, and a first automatic cut work
+today.** Later phases add a cited story of the event, where the cameras disagree, and an edit that
+knows what it is looking at. See the [roadmap](docs/ROADMAP.md) and the
+[project brief](docs/PROJECT_BRIEF.md).
 
 ![The viewer playing four clips of one event in sync](docs/viewer.gif)
 
@@ -39,7 +40,9 @@ stays within a frame of where the shared clock wants it. Nobody is filmed: the c
 data/<event>/
 ├─ originals/      your videos, untouched and read-only
 ├─ proxies/        working copies (<clip>.mp4) and their sound (<clip>.wav)
-└─ manifest.json   what each clip is, where its files are, and any problems
+├─ manifest.json   what each clip is, where its files are, and any problems
+├─ timeline.json   where each clip sits on the shared clock          (sync)
+└─ cut.json, cut.mp4   the shot list, with a reason each, and the film  (cut)
 ```
 
 ## What sync does
@@ -94,6 +97,31 @@ be placed as one clip. Clips without usable sound can't be placed yet.
 
 `scenefold evaluate <event> <truth.json>` measures sync error against ground truth: moments such as
 claps, with their time in each clip that caught them.
+
+## What the cut does
+
+`scenefold cut <event>` edits the angles into one film, with no AI and no idea of what is being
+filmed. It judges each second of each clip on three things a camera can be wrong about — how much
+detail the picture holds, how far the whole frame shifts (a phone being waved about, or a fast pan)
+and how much is crushed black or blown white — and scores them against the other angles of the same
+event.
+
+Those scores are weighed against three rules an editor would recognise: hold a shot for at least a
+few seconds, don't cut unless the new angle is clearly better, and don't bounce straight back to
+the angle you just left. Every way the film could be built is weighed at once, so the result is the
+best *sequence of shots*, not the best angle second by second.
+
+- The sound comes from one microphone and runs unbroken: the longest clip, and of equally long
+  ones the nearest to the stage, because its sound is the least delayed. The film lasts exactly as
+  long as that clip was recording.
+- Pictures are lined up on the event, not on when each phone heard it, so a cut never jumps in time.
+- `cut.json` records every shot with the reason it was chosen ("steadiest picture of the angles
+  recording", "the only angle recording", "kept rolling: cutting away would have cost more than it
+  gained"), and `cut.mp4` is the film. `--plan-only` writes the shot list without rendering.
+
+**Known limits.** Footage outside the microphone clip's span isn't used — the price of never
+cutting the sound. Nothing yet knows what is *in* the picture, so a sharp shot of the floor beats a
+shaky shot of the moment everyone came for; that arrives with the later phases.
 
 ## Requirements
 
@@ -193,6 +221,23 @@ uv run scenefold evaluate my-event claps.json
 
 Clips are named by file name, or by clip ID when two files share a name.
 
+### Making the film
+
+```sh
+uv run scenefold cut my-event
+```
+
+```
+Film of my-event: 13 shots, 5:08.0 long, sound from Dharm.mp4 (recorded longest, so its sound
+covers the most of the event)
+    0.0-  59.0 s  Dharm.mp4    the only angle recording
+   59.0-  88.0 s  Somnath.mp4  best exposed of the angles recording
+   88.0-  95.0 s  Dharm.mp4    sharpest picture of the angles recording
+   ...
+Shots: data/my-event/cut.json
+Film: data/my-event/cut.mp4
+```
+
 ### Watching the clips together
 
 ```sh
@@ -241,7 +286,7 @@ git config core.hooksPath .githooks
 ```
 src/scenefold/   pipeline code: cli, ingest, media (FFmpeg), manifest and timeline (data formats),
                  audio_offset and picture_offset (matching clips by sound and by light), sync,
-                 evaluate (sync error), view (server)
+                 evaluate (sync error), quality and cut (the film), view (server)
 tests/           tests
 tools/           developer scripts, e.g. fetching a public dataset to measure sync on real footage
 web/             the viewer: plain HTML, CSS and JavaScript modules, no build step

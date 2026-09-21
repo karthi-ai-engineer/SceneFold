@@ -14,7 +14,7 @@ Last updated: 2026-09-20
 | 2 | Sync | 2 | 1–2 | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines |
 | 2b | Place the pictures, not the sound arrival | 2 | ~1 | Done: measured in sync, and the viewer can hold the pictures together |
 | 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Done: viewer within half a frame, checked on the pictures too, demo event and README GIF |
-| 4 | Quality cut (no AI) | 9 (basic) | 1 | Not started |
+| 4 | Quality cut (no AI) | 9 (basic) | 1 | In progress: `scenefold cut` scores, chooses shots, and renders the film |
 | 5 | Clip understanding | 4 | 2 | Not started |
 | 6 | Event knowledge + conflicts | 6, 8 | 2 | Not started |
 | 7 | Story + Q&A → **v0.5.0** | 7, 10 | 1–2 | Not started |
@@ -391,6 +391,29 @@ were checked against the sound, and the README shows the viewer. Tagged `v0.1.0`
 **Done when**
 - The cut renders end-to-end from `timeline.json`, every shot states a reason, no shot is shorter than
   the minimum, and the audio has no jumps.
+
+**Progress (2026-09-21)**
+- `scenefold cut <event>` (`--plan-only` to skip rendering), code in `src/scenefold/quality.py`
+  (what each second of each clip looks like) and `src/scenefold/cut.py` (the shots, `cut.json`,
+  `cut.mp4`). 30 tests.
+- **Scoring**, on small grey frames ten a second: *sharpness* (how much detail a frame holds),
+  *steadiness* (how far the whole picture shifts between frames, found by lining each frame up with
+  the one before it, so a subject crossing a steady frame costs nothing and only the camera moving
+  does) and *exposure* (crushed black, blown white, and distance from mid-grey). Each is stretched
+  over the range the event itself shows, so "good" means better than the other angles here.
+- **Shots** come from one pass of dynamic programming over the whole film: pieces of 3-12 seconds,
+  each angle available only where it was really recording, a cut costing 0.35 and a cut straight
+  back to the angle before last costing 0.25 more. A piece may also hold the angle it already had,
+  costing nothing and merged back into one shot; without that, a stretch filmed by one phone alone
+  could not be covered at all, since there is no second angle to cut to.
+- **Sound** comes from one clip, unbroken: the longest, and of equally long ones the one nearest to
+  the sound (`heard_late_s`), because its sound fits pictures of the event most closely. The film
+  runs exactly as long as that clip, on that clip's own clock; every shot carries the `speed` that
+  puts it on that clock, which keeps picture and sound together over a long film (300 ppm would
+  otherwise drift 90 ms in five minutes).
+- On `coldplay-jan26` (5 clips, 5:08 of film) it chose 13 shots from 3 to 63 seconds with varied
+  reasons, taking 51 s to look at 20 minutes of footage. On the drawn demo event the clock burnt
+  into the picture reads 30.467 s at 30 s into the film: the shots land on the right frames.
 
 ---
 
