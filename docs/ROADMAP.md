@@ -529,8 +529,20 @@ comes from the picture score (`quality.py`), not from the model's opinion of its
   resolved by the better view, 44 are left unresolved because no camera was clearly better, and 18
   because the camera with the best view is the one that missed it, which is the case where the
   event may not have happened at all. Resolution is never by majority.
-- Still to do here: reading two descriptions and saying whether they contradict each other (the
-  other conflict types need a model), and recall and precision against the hand-labelled event.
+- **Reading the accounts (2026-09-21)**: `judge.py` shows the model on this computer two
+  descriptions of one moment and asks whether both could be true at that instant. Wording, detail
+  and focus differ innocently; what cannot both hold (one performer against four, an empty dark
+  stage against a lit one with a band) is a conflict, typed as a different interpretation, an
+  occlusion, a camera pointed elsewhere, or a suspected model error. An unclear answer is read as
+  agreement, because calling a disagreement puts a moment in front of a person.
+- The first prompt was far too forgiving: told that wording differences do not matter, the model
+  accepted "a performer stands alone at a piano" alongside "four band members play together". With
+  a rubric naming what cannot both be true, it reads 6 of 6 calibration pairs the way a person
+  would; that calibration is a test, skipped when no model is running.
+- On `coldplay-jan26` it read 54 distinct pairs (deduplicated from 311 events — the same
+  twelve-second description covers many moments) and found no contradictions, which is the honest
+  answer for five phones pointed at one stage. The 91 conflicts there are all the structural kind.
+- Still to do here: recall and precision against the hand-labelled event.
 
 ---
 

@@ -16,9 +16,9 @@ separate question, and an unanswered one where a small model's words are all we 
 from dataclasses import dataclass
 from pathlib import Path
 
+from scenefold.judge import Judge, Reading
 from scenefold.knowledge import (
     NOT_IN_VIEW,
-    READ_DIFFERENTLY,
     UNRESOLVED,
     Conflict,
     Event,
@@ -199,10 +199,71 @@ def _disagreement(event: Event, views: dict[str, float | None]) -> Conflict | No
     )
 
 
+def read_accounts(events: list[Event], judge: Judge, progress=None) -> int:
+    """Have the two best-placed accounts of each event read, and note where they disagree.
+
+    Only the best two are read: a moment with five witnesses does not need ten comparisons to show
+    that the clips are not telling one story. The same pair of sentences is only ever read once,
+    however many moments they cover — a twelve-second description covers a great many of them.
+    """
+    seen: dict[tuple[str, str], Reading] = {}
+    found = 0
+    for event in events:
+        said = [e for e in event.evidence if e.summary]
+        if len(said) < 2:
+            continue
+        first, second = sorted(said, key=lambda e: -(e.picture_score or 0))[:2]
+        if first.summary.strip() == second.summary.strip():
+            continue  # word for word the same: nothing for anyone to read
+        pair = (first.summary.strip(), second.summary.strip())
+        if pair not in seen:
+            if progress:
+                progress(f"reading two accounts of {event.t_master_s:.0f} s")
+            seen[pair] = judge.read(*pair)
+        reading = seen[pair]
+        if reading.fit:
+            continue
+        who, why = _who_to_believe(event, {e.clip_id: e.picture_score for e in event.evidence})
+        event.conflicts.append(
+            Conflict(
+                kind=reading.kind,
+                explanation=f"{reading.why} (A: {first.clip_id[:8]}, B: {second.clip_id[:8]})",
+                resolved_by=who,
+                reason=why,
+            )
+        )
+        found += 1
+    return found
+
+
+def _who_to_believe(event: Event, views: dict[str, float | None]) -> tuple[str | None, str]:
+    """Which clip's account to take: the one that could see best, or nobody."""
+    scored = {clip: score for clip, score in views.items() if score is not None}
+    if len(scored) < 2:
+        return None, UNRESOLVED
+    best = max(scored, key=lambda clip: scored[clip])
+    second = max(score for clip, score in scored.items() if clip != best)
+    if scored[best] - second < CLEARLY_BETTER:
+        return (
+            None,
+            f"no camera had a clearly better view ({scored[best]:.2f} against {second:.2f})",
+        )
+    return best, f"its picture was the better one ({scored[best]:.2f} against {second:.2f})"
+
+
 def fuse_event(
-    event_name: str, data_dir: str | Path = "data", *, worth_keeping: float = WORTH_KEEPING
+    event_name: str,
+    data_dir: str | Path = "data",
+    *,
+    worth_keeping: float = WORTH_KEEPING,
+    judge: Judge | None = None,
+    progress=None,
 ) -> list[Event]:
-    """Merge every clip's account into events on the shared clock, and write them down."""
+    """Merge every clip's account into events on the shared clock, and write them down.
+
+    With a `judge`, the accounts of each event are also read against each other, which finds the
+    disagreements that arithmetic cannot: two clips describing the same moment differently.
+    """
     try:
         event_id = normalize_event_id(event_name)
     except ValueError as exc:
@@ -233,6 +294,8 @@ def fuse_event(
             "`scenefold observe` again to find them"
         )
     events = _events_from(gather(moments), placed, watched, timeline)
+    if judge is not None:
+        read_accounts(events, judge, progress)
 
     store = open_store(event_dir)
     try:
@@ -301,7 +364,3 @@ def _clip_row(placement: ClipPlacement, seen: ClipObservations) -> dict:
         "drift_ppm": placement.drift_ppm,
         "duration_s": seen.duration_s,
     }
-
-
-# Kept for the conflict types the next piece of work will use.
-_TYPES = (NOT_IN_VIEW, READ_DIFFERENTLY)

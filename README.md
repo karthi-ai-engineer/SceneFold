@@ -123,6 +123,12 @@ clearly better view)
 - **Resolved by the better view, never by majority.** Three phones behind a pillar do not outvote
   the one with a clear line of sight. When the camera with the best view is the one that missed it,
   that stays unresolved — it is exactly the case where the thing may not have happened at all.
+- **The accounts are read against each other**, which arithmetic cannot do: the model on your
+  computer is shown two descriptions of one moment and asked whether both could be true at that
+  instant. Differences of wording, detail or focus are not disagreements; a dark empty stage
+  against a lit one with a band on it is. The same pair of sentences is only read once however
+  many moments they cover, so a five-minute event costs about fifty readings, not three hundred.
+  Skip it with `--no-reading`.
 - Everything lands in `knowledge.sqlite`, which a later phase can ask questions of, and every claim
   carries the clip it came from.
 

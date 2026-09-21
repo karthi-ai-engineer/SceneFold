@@ -15,8 +15,10 @@ from scenefold.fuse import (
     on_the_clock,
     recording_at,
 )
+from scenefold.judge import Reading
 from scenefold.knowledge import (
     NOT_IN_VIEW,
+    READ_DIFFERENTLY,
     all_events,
     counts,
     events_between,
@@ -367,3 +369,99 @@ def test_a_clip_with_as_good_a_view_missing_it_is_a_disagreement(tmp_path):
     assert "1 with as good a view did not" in conflict.explanation
     assert conflict.resolved_by is None  # the clip that missed it had the best view of all
     assert "best view" in conflict.reason
+
+
+class FakeReader:
+    """A reader that says what it is told to, and counts how often it was asked."""
+
+    def __init__(self, verdicts=None):
+        self.asked: list[tuple[str, str]] = []
+        self.verdicts = verdicts or {}
+
+    def read(self, first, second):
+        self.asked.append((first, second))
+        return self.verdicts.get((first, second), Reading(True, None, "they fit"))
+
+
+def test_accounts_that_do_not_fit_become_a_conflict(tmp_path):
+    placements = [placed("a", 0.0), placed("b", 0.0)]
+    clips = {
+        "a": watched("a", [(20.0, "picture", 1.0)], [shows(12, 24, "confetti falls", 0.90)]),
+        "b": watched("b", [(20.02, "picture", 0.9)], [shows(12, 24, "an empty dark stage", 0.70)]),
+    }
+    name = build(tmp_path, clips, placements)
+    cannot_both = Reading(False, READ_DIFFERENTLY, "both cannot hold")
+    reader = FakeReader({("confetti falls", "an empty dark stage"): cannot_both})
+
+    events = fuse_event(name, data_dir=tmp_path, judge=reader)
+
+    conflict = next(c for c in events[0].conflicts if c.kind == READ_DIFFERENTLY)
+    assert "both cannot hold" in conflict.explanation
+    assert conflict.resolved_by == "a"  # its picture was the better one, 0.90 against 0.70
+    assert reader.asked == [("confetti falls", "an empty dark stage")]
+
+
+def test_accounts_that_fit_are_left_alone(tmp_path):
+    placements = [placed("a", 0.0), placed("b", 0.0)]
+    clips = {
+        "a": watched("a", [(20.0, "picture", 1.0)], [shows(12, 24, "a crowd with lights", 0.9)]),
+        "b": watched("b", [(20.02, "picture", 0.9)], [shows(12, 24, "people holding phones", 0.8)]),
+    }
+    name = build(tmp_path, clips, placements)
+
+    events = fuse_event(name, data_dir=tmp_path, judge=FakeReader())
+
+    assert not events[0].conflicts
+
+
+def test_the_same_two_sentences_are_only_read_once(tmp_path):
+    """A twelve-second description covers many moments; reading it again each time is waste."""
+    placements = [placed("a", 0.0), placed("b", 0.0)]
+    clips = {
+        "a": watched(
+            "a",
+            [(20.0, "picture", 1.0), (21.0, "sound", 0.9), (22.0, "sound", 0.8)],
+            [shows(12, 24, "one account", 0.9)],
+        ),  # fmt: skip
+        "b": watched(
+            "b",
+            [(20.02, "picture", 0.9), (21.03, "sound", 0.8), (22.01, "sound", 0.7)],
+            [shows(12, 24, "another account", 0.8)],
+        ),  # fmt: skip
+    }
+    name = build(tmp_path, clips, placements)
+    reader = FakeReader()
+
+    events = fuse_event(name, data_dir=tmp_path, judge=reader)
+
+    assert len(events) == 3  # three separate moments
+    assert len(reader.asked) == 1  # but one pair of sentences
+
+
+def test_identical_accounts_are_not_read_at_all(tmp_path):
+    placements = [placed("a", 0.0), placed("b", 0.0)]
+    same = "a crowd with lights"
+    clips = {
+        "a": watched("a", [(20.0, "picture", 1.0)], [shows(12, 24, same, 0.9)]),
+        "b": watched("b", [(20.02, "picture", 0.9)], [shows(12, 24, same, 0.8)]),
+    }
+    name = build(tmp_path, clips, placements)
+    reader = FakeReader()
+
+    fuse_event(name, data_dir=tmp_path, judge=reader)
+
+    assert reader.asked == []
+
+
+def test_nothing_is_read_when_only_one_clip_saw_it(tmp_path):
+    placements = [placed("a", 0.0), placed("b", 0.0)]
+    clips = {
+        "a": watched("a", [(20.0, "picture", 1.0)], [shows(12, 24, "a flash", 0.9)]),
+        "b": watched("b", [], [shows(12, 24, "the floor", 0.2)]),
+    }
+    name = build(tmp_path, clips, placements)
+    reader = FakeReader()
+
+    fuse_event(name, data_dir=tmp_path, judge=reader)
+
+    assert reader.asked == []  # there is only one account of it

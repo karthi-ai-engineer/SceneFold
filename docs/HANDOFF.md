@@ -52,7 +52,7 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 362 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 374 passed, 1 xfailed (the known chorus limit)
 node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+)
 ```
 
@@ -468,3 +468,10 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    (median 0.154) before trusting the 0.12 margin.
 4. Floating point: `12.7 - 12.5 - 0.2` is slightly negative, so a moment on a clip's first frame
    read as "not recording". `recording_at` now allows a millisecond either side.
+5. **Reading the accounts** (`judge.py`): the local model compares two descriptions of one moment.
+   Watch the prompt: the first version, warned off wording differences, called "one performer at a
+   piano" and "four band members playing" compatible. A rubric naming what cannot both be true
+   fixed it (6 of 6 calibration pairs right; that is a test that skips without a model). On the
+   concert it read 54 distinct pairs and found no contradictions — five phones pointed at one
+   stage genuinely agree, and the feature will earn its keep on footage where people differ.
+   Caching by sentence pair cut 311 events to 54 readings.

@@ -11,6 +11,7 @@ from scenefold.cut import CUT_NAME, FILM_NAME, CutError, Film, cut_event
 from scenefold.evaluate import FRAME_S, EvaluationError, evaluate_event
 from scenefold.fuse import FuseError, fuse_event
 from scenefold.ingest import IngestError, InputResult, Outcome, ingest
+from scenefold.judge import JudgeError, OllamaJudge
 from scenefold.knowledge import KNOWLEDGE_NAME, counts, load_store
 from scenefold.observations import OBSERVATIONS_DIR, SpeechSettings, WatchSettings
 from scenefold.observe import WatchError, observe_event
@@ -138,6 +139,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         default=Path("data"),
         help="folder that holds event workspaces (default: ./data)",
+    )
+    fuse_parser.add_argument(
+        "--no-reading",
+        action="store_true",
+        help="don't have the clips' accounts read against each other; faster, but the only "
+        "disagreements found are the ones arithmetic can see",
+    )
+    fuse_parser.add_argument(
+        "--model", default=WatchSettings().model, help="the model that reads the accounts"
     )
     cut_parser = commands.add_parser(
         "cut",
@@ -340,9 +350,10 @@ def _run_observe(args: argparse.Namespace) -> int:
 
 
 def _run_fuse(args: argparse.Namespace) -> int:
+    judge = None if args.no_reading else OllamaJudge(args.model)
     try:
-        events = fuse_event(args.event, data_dir=args.data_dir)
-    except FuseError as exc:
+        events = fuse_event(args.event, data_dir=args.data_dir, judge=judge, progress=_print_step)
+    except (FuseError, JudgeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     event_dir = Path(args.data_dir) / args.event
