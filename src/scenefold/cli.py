@@ -9,7 +9,9 @@ from pathlib import Path
 
 from scenefold.cut import CUT_NAME, FILM_NAME, CutError, Film, cut_event
 from scenefold.evaluate import FRAME_S, EvaluationError, evaluate_event
+from scenefold.fuse import FuseError, fuse_event
 from scenefold.ingest import IngestError, InputResult, Outcome, ingest
+from scenefold.knowledge import KNOWLEDGE_NAME, counts, load_store
 from scenefold.observations import OBSERVATIONS_DIR, SpeechSettings, WatchSettings
 from scenefold.observe import WatchError, observe_event
 from scenefold.picture_offset import metres
@@ -123,6 +125,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Whisper size to listen with: tiny, base, small, medium, large-v3 "
         "(default: %(default)s)",
     )
+    fuse_parser = commands.add_parser(
+        "fuse",
+        help="merge what every clip saw into one account of the event",
+        description="Put every clip's moments and descriptions on the shared clock, merge the "
+        "ones that landed together into events, and note where the clips disagree. Writes "
+        "<data-dir>/<event>/knowledge.sqlite.",
+    )
+    fuse_parser.add_argument("event", help="event name used with observe, e.g. match-01")
+    fuse_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="folder that holds event workspaces (default: ./data)",
+    )
     cut_parser = commands.add_parser(
         "cut",
         help="edit the angles into one film",
@@ -172,6 +188,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "sync": _run_sync,
         "evaluate": _run_evaluate,
         "observe": _run_observe,
+        "fuse": _run_fuse,
         "cut": _run_cut,
         "view": _run_view,
     }
@@ -319,6 +336,40 @@ def _run_observe(args: argparse.Namespace) -> int:
             spoken = clip.speech[0]
             print(f"      said at {spoken.t_start_s:.0f} s: {spoken.text[:80]}")
     print(f"Observations: {Path(args.data_dir) / args.event / OBSERVATIONS_DIR}")
+    return 0
+
+
+def _run_fuse(args: argparse.Namespace) -> int:
+    try:
+        events = fuse_event(args.event, data_dir=args.data_dir)
+    except FuseError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    event_dir = Path(args.data_dir) / args.event
+    store = load_store(event_dir)
+    try:
+        known = counts(store) if store else {}
+    finally:
+        if store:
+            store.close()
+    both = known.get("corroborated", 0)
+    print(
+        f"\nEvent {args.event}: {len(events)} moments on the shared clock, "
+        f"{both} of them caught by more than one clip"
+    )
+    unresolved = known.get("unresolved", 0)
+    if known.get("conflicts"):
+        print(
+            f"Where the clips disagree: {known['conflicts']} "
+            f"({unresolved} left unresolved, which is the honest answer when no camera had a "
+            f"clearly better view)"
+        )
+    for event in sorted(events, key=lambda e: (-len(e.evidence), -e.strength))[:5]:
+        seen_by = ", ".join(sorted(e.clip_id[:8] for e in event.evidence))
+        print(f"  {event.t_master_s:8.2f} s  {event.kind:7} seen by {seen_by}")
+        if event.summary:
+            print(f"      {event.summary[:100]}")
+    print(f"Knowledge: {event_dir / KNOWLEDGE_NAME}")
     return 0
 
 

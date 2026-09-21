@@ -15,8 +15,8 @@ Last updated: 2026-09-21
 | 2b | Place the pictures, not the sound arrival | 2 | ~1 | Done: measured in sync, and the viewer can hold the pictures together |
 | 3 | Synced viewer → **v0.1.0** | 3 | 1–2 | Done: viewer within half a frame, checked on the pictures too, demo event and README GIF |
 | 4 | Quality cut (no AI) | 9 (basic) | 1 | Done: `scenefold cut` scores, chooses shots, renders the film, and the viewer plays it |
-| 5 | Clip understanding | 4 | 2 | In progress: `scenefold observe` watches every clip with a local model; speech and recall left |
-| 6 | Event knowledge + conflicts | 6, 8 | 2 | Not started |
+| 5 | Clip understanding | 4 | 2 | Done but for recall: watches, listens, and times the moments, all on this computer |
+| 6 | Event knowledge + conflicts | 6, 8 | 2 | In progress: clips merged into events with evidence and conflicts |
 | 7 | Story + Q&A → **v0.5.0** | 7, 10 | 1–2 | Not started |
 | 8 | Cross-angle identity | 5 | 2–3 | Not started |
 | 9 | Smart cut + release → **v1.0.0** | 9 | 2 | Not started |
@@ -511,6 +511,26 @@ comes from the picture score (`quality.py`), not from the model's opinion of its
 **Done when**
 - Every event cites at least one observation; every conflict has a type and a resolution or "unresolved".
 - Event recall and conflict precision are measured on the labeled test event.
+
+**Progress (2026-09-21)**
+- `scenefold fuse <event>` (`fuse.py`, `knowledge.py`). Every clip's timed moments go onto the
+  shared clock — picture-aligned, so a phone at the back is not placed 400 ms early — and moments
+  landing within 0.15 s of each other become one event with several witnesses. A clip only ever
+  contributes its strongest moment to an event, so one phone shaking twice is not two witnesses.
+- Each event carries evidence per clip (its own second, what it was showing, how good its picture
+  was) and the account of the best-placed clip as its summary. Everything is written to
+  `knowledge.sqlite` in one transaction, replacing the last picture rather than adding to it.
+- **Corroboration measured.** On the drawn demo, where every clip films the same show, 219 of 298
+  moments were caught by more than one clip (73%); on `coldplay-jan26`, where phones point
+  different ways, 118 of 311 (38%). The difference is what it should be.
+- **Conflicts.** A conflict is raised only when two clips agree something happened and a third,
+  whose picture was at least as good as the weakest witness's, caught nothing. That rule matters:
+  without it, 307 of 311 concert events were "conflicts" — noise. With it, 69, of which 7 are
+  resolved by the better view, 44 are left unresolved because no camera was clearly better, and 18
+  because the camera with the best view is the one that missed it, which is the case where the
+  event may not have happened at all. Resolution is never by majority.
+- Still to do here: reading two descriptions and saying whether they contradict each other (the
+  other conflict types need a model), and recall and precision against the hand-labelled event.
 
 ---
 

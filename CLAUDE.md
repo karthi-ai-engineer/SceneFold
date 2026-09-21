@@ -33,6 +33,7 @@ uv run scenefold sync <event>                         # writes data/<event>/time
 uv run scenefold sync <event> --sound-only            # skip the picture pass (distance), faster
 uv run scenefold evaluate <event> <truth.json>        # sync error against ground truth moments
 uv run scenefold observe <event>                      # what each clip shows (local model, Ollama)
+uv run scenefold fuse <event>                         # merges the clips into knowledge.sqlite
 uv run scenefold cut <event>                          # writes data/<event>/cut.json and cut.mp4
 uv run scenefold view <event>                         # the synced viewer at http://127.0.0.1:8765
 node --test web/tests/sync.test.mjs                   # the viewer's timing rules (Node 18+)

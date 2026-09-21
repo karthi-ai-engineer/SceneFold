@@ -101,6 +101,31 @@ be placed as one clip. Clips without usable sound can't be placed yet.
 `scenefold evaluate <event> <truth.json>` measures sync error against ground truth: moments such as
 claps, with their time in each clip that caught them.
 
+## What fusing does
+
+`scenefold fuse <event>` is where the clips stop being separate. Every clip's timed moments go onto
+the shared clock, and the ones that land together are taken to be the same thing happening:
+
+```
+Event coldplay-jan26: 311 moments on the shared clock, 118 of them caught by more than one clip
+Where the clips disagree: 69 (62 left unresolved, which is the honest answer when no camera had a
+clearly better view)
+    198.51 s  both  seen by 5 clips
+      A large outdoor concert at night features a brightly lit stage with dynamic lighting effects
+```
+
+- **Corroboration is the point.** Five phones catching one instant is far stronger evidence than
+  one phone describing it. On clips that all film the same thing, 219 of 298 moments were caught by
+  more than one camera; on real concert footage, where phones point different ways, 118 of 311.
+- **Disagreements are found, not smoothed over.** When two clips agree something happened and a
+  third with as good a view caught nothing, that is recorded with its type and either a resolution
+  or an honest "unresolved".
+- **Resolved by the better view, never by majority.** Three phones behind a pillar do not outvote
+  the one with a clear line of sight. When the camera with the best view is the one that missed it,
+  that stays unresolved — it is exactly the case where the thing may not have happened at all.
+- Everything lands in `knowledge.sqlite`, which a later phase can ask questions of, and every claim
+  carries the clip it came from.
+
 ## What the cut does
 
 `scenefold cut <event>` edits the angles into one film, with no AI and no idea of what is being

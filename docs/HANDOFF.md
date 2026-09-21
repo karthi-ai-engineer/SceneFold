@@ -52,7 +52,7 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 346 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 362 passed, 1 xfailed (the known chorus limit)
 node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+)
 ```
 
@@ -452,3 +452,19 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 12. A wiring bug worth remembering: the timing was only applied when a clip was *re-watched*, so
     the first run over cached observations reported 0 of 91 windows timed. Anything computed
     outside the cached step has to be applied to what is already on disk as well.
+
+### Session 9: 2026-09-21, Acer Predator
+
+1. **Phase 6 started** (branch `phase-5-moments` merged; now `phase-6-knowledge`): `scenefold fuse`
+   puts every clip's moments on the shared clock, merges the ones landing together into events with
+   several witnesses, and writes `knowledge.sqlite` (clips, events, evidence, conflicts).
+2. Corroboration measured: 219 of 298 moments on the drawn demo (all clips film the same show), 118
+   of 311 on the concert (phones point different ways). That gap is the sanity check.
+3. **The conflict rule took two goes.** Flagging "a clip that was filming missed this" made 307 of
+   311 concert events conflicts — useless. Now a conflict needs two clips agreeing plus a third
+   whose picture was at least as good as the weakest witness's: 69 conflicts, 7 resolved by the
+   better view, 44 unresolved because nobody was clearly better, 18 unresolved because the best
+   view is the one that missed it. Measured the real gap between best and next picture score
+   (median 0.154) before trusting the 0.12 margin.
+4. Floating point: `12.7 - 12.5 - 0.2` is slightly negative, so a moment on a clip's first frame
+   read as "not recording". `recording_at` now allows a millisecond either side.
