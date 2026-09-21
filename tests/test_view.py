@@ -727,3 +727,23 @@ def test_cli_view_of_an_event_that_was_never_synced(tmp_path, capsys):
 def test_cli_view_with_a_bad_event_name(tmp_path, capsys):
     assert main(["view", "no/such", "--data-dir", str(tmp_path), "--no-browser"]) == 2
     assert "invalid event name" in capsys.readouterr().err
+
+
+def test_only_the_moments_the_clips_disagree_about(viewer, knowledge):
+    status, _, body = fetch(viewer, "/api/events?conflicts=1")
+    assert status == 200
+    answer = json.loads(body)
+    assert answer["conflicts_only"] is True
+    assert answer["events"], "the fixture has a conflict in it"
+    assert all(event["conflicts"] for event in answer["events"])
+    # and it is a narrowing of the same stretch, never a different set
+    everything = json.loads(fetch(viewer, "/api/events")[2])
+    assert answer["count"] <= everything["count"]
+    disputed = {e["event_id"] for e in everything["events"] if e["conflicts"]}
+    assert {e["event_id"] for e in answer["events"]} == disputed
+
+
+def test_asking_for_everything_still_gets_everything(viewer, knowledge):
+    for query in ("", "?conflicts=0", "?conflicts=no"):
+        answer = json.loads(fetch(viewer, f"/api/events{query}")[2])
+        assert answer["conflicts_only"] is False, query

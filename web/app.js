@@ -7,6 +7,7 @@
 // finished, and only then plays on.
 
 import * as sync from "./sync.js";
+import { loadDisagreements } from "./disagreements.js";
 import { loadPeople } from "./people.js";
 import { renderReport } from "./report.js";
 import { loadFilm, startFilm } from "./film.js";
@@ -517,12 +518,15 @@ async function boot() {
     $("tiles").innerHTML = `<p class="muted">No clip could be placed on the clock. See the sync report.</p>`;
   }
   renderReport(timeline, colorOf, OTHER);
-  // Who was matched across the angles, and the one click that checks a match: watch it.
-  loadPeople(timeline, colorOf, OTHER, (t) => {
+  const watchAt = (t) => {
     showTab("viewer");
     seekTo(t);
     toast(`Jumped to ${sync.formatTime(t, 1)}`);
-  });
+  };
+  // Where the footage argues with itself, and who was matched across the angles. Both answer the
+  // same way: by taking you to the second in question.
+  loadDisagreements(timeline, colorOf, OTHER, watchAt);
+  loadPeople(timeline, colorOf, OTHER, watchAt);
   bindControls();
 
   await Promise.all(state.clips.map((clip) => waitReady(clip.video)));

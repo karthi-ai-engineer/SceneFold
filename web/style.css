@@ -181,6 +181,19 @@ td.name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
   background: var(--panel); border: 1px solid var(--warning); border-left-width: 3px;
 }
 .doubt strong { color: var(--ink); }
+/* where the footage argues with itself: one row a moment, the accounts side by side */
+.disagree-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.disagree {
+  width: 100%; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; text-align: left;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
+  color: inherit; font: inherit; cursor: pointer;
+}
+.disagree:hover { border-color: var(--accent); }
+.disagree .when { color: var(--muted); font-size: 12px; padding-top: 2px; }
+.disagree .why { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.disagree .accounts { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.disagree .accounts li { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: baseline; }
+.disagree .accounts .said { font-size: 13px; color: var(--ink-2); }
 
 /* what the account left out: there, for anyone who wants it, and quiet otherwise */
 .left-out { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 13px; }

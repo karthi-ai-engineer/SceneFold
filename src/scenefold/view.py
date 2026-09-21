@@ -182,6 +182,12 @@ def _asked_span(query: str) -> tuple[float, float]:
     return span[0], span[1]
 
 
+def _asked_for_conflicts(query: str) -> bool:
+    """Whether a request asked only for the moments the clips disagree about."""
+    given = (parse_qs(query).get("conflicts") or [""])[-1].strip().lower()
+    return given in ("1", "true", "yes")
+
+
 def _known_events(event_dir: Path, t_start_s: float, t_end_s: float) -> list[Event]:
     """What the event store knows happened in that stretch, or _NotFound.
 
@@ -271,15 +277,22 @@ class _Handler(BaseHTTPRequestHandler):
         self._write(body)
 
     def _send_events(self, query: str) -> None:
-        """The moments in the asked-for stretch, each with its evidence and any conflict."""
+        """The moments in the asked-for stretch, each with its evidence and any conflict.
+
+        `conflicts=1` narrows it to the ones whose witnesses disagree, which is what a person
+        looking for where the footage argues with itself actually wants.
+        """
         t_start_s, t_end_s = _asked_span(query)
         events = _known_events(self.server.event_dir, t_start_s, t_end_s)
+        if _asked_for_conflicts(query):
+            events = [event for event in events if event.conflicts]
         answer = {
             # The bounds as asked, with null for "as far as the event goes": JSON has no word for
             # forever, and a browser refuses to read the one Python would write (Infinity).
             "from_s": t_start_s if math.isfinite(t_start_s) else None,
             "to_s": t_end_s if math.isfinite(t_end_s) else None,
             "count": len(events),
+            "conflicts_only": _asked_for_conflicts(query),
             "events": [asdict(event) | {"witnesses": event.witnesses} for event in events],
         }
         body = json.dumps(answer).encode()
