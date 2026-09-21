@@ -468,6 +468,7 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
       <div class="where">src/scenefold/quality.py · cut.py — <code>scenefold cut</code></div>
       <h2>10. Cut the angles into one film</h2>
       <p>Each second of each clip is scored on how good its picture is: sharp, steady, well exposed. Then the whole film is planned at once. A cut has to earn its keep, a shot has to last a few seconds, and cutting straight back to the angle you just left costs extra. Drag the dials and watch the film rebuild itself: cheap cuts give a restless film, dear ones a slow one.</p>
+      <p>That is everything a camera can be wrong about and nothing about what it was pointed at, so a sharp shot of the floor would beat a shaky shot of the moment everyone came for. Tick <em>knowing what happened</em> and the cut also reads the events from step 12: how much happened in each second, weighted by how many phones caught it, and how much of that each angle has evidence for. It is added to the picture score, never replacing it, so an angle wins a moment by having both seen it and been worth looking at — and cutting across a moment costs more than cutting on the quiet in front of it.</p>
     </div>
     <div class="panel">
       <div class="controls">
@@ -478,6 +479,7 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
           <input type="range" id="cut-min" min="1" max="10" step="1" value="3">
         </label>
         <label class="field inline"><input type="checkbox" id="cut-return" checked>Cutting back to the angle before last costs more</label>
+        <label class="field inline"><input type="checkbox" id="cut-knows" checked>Knowing what happened, not just how it looks</label>
         <button id="cut-run" class="primary">▶ Cut the film</button>
         <span class="note" id="cut-status"></span>
       </div>
@@ -3558,7 +3560,37 @@ STAGES.sound = (() => {
 STAGES.cut = (() => {
   const strips = $("cut-strips"), film = $("cut-film");
   const MAX_SHOT_S = 12, RETURN_COST = 0.25;
+  /* interest.py: how much being pointed at what happened is worth against how good the picture is,
+     how far a moment carries either side of itself, and how much more a cut across one costs. */
+  const WITNESSED = 0.5, SPREAD_S = 2.0, DURING = 1.0;
   let plan = null;
+
+  /* interest.measure: how much happened each second, and what share of it each angle caught. */
+  function interestOf(events, start, seconds, clipIds) {
+    const happening = new Array(seconds).fill(0);
+    const caught = Object.fromEntries(clipIds.map((id) => [id, new Array(seconds).fill(0)]));
+    let counted = 0;
+    for (const event of events) {
+      const at = event.t_master_s - start;
+      if (at < -SPREAD_S || at >= seconds + SPREAD_S) continue;
+      counted += 1;
+      const weight = event.strength * event.witnesses;
+      const saw = new Set((event.evidence ?? []).map((e) => e.clip_id));
+      for (let t = 0; t < seconds; t++) {
+        const near = Math.max(0, 1 - Math.abs(t - at) / SPREAD_S);
+        if (!near) continue;
+        happening[t] += weight * near;
+        for (const id of saw) if (caught[id]) caught[id][t] += weight * near;
+      }
+    }
+    const tallest = Math.max(...happening, 0);
+    const scaled = happening.map((v) => (tallest > 0 ? v / tallest : 0));
+    const share = {};
+    for (const [id, seen] of Object.entries(caught)) {
+      share[id] = seen.map((v, t) => (happening[t] > 0 ? v / happening[t] : 0));
+    }
+    return { happening: scaled, share, events: counted, known: counted > 0 && tallest > 0 };
+  }
 
   /* Invented picture quality: a slow wander, as a phone drifts in and out of focus, shade and
      steadiness. The real code measures sharpness, steadiness and exposure (quality.py). */
@@ -3596,8 +3628,16 @@ STAGES.cut = (() => {
 
   /* The same plan as cut.py: pieces of 3-12 s, a piece may hold the angle before it (free), a cut
      costs, and cutting back to the angle before last costs more. Every way is weighed at once. */
-  function choose(list, seconds, { minShot, cutCost, returnCost }) {
-    const sums = list.map(({ scores }) => {
+  function choose(list, seconds, { minShot, cutCost, returnCost, interest }) {
+    /* What each second of each angle is worth: how it looks, plus what it was pointed at. */
+    const worth = list.map(({ ph, scores }) =>
+      interest && interest.known
+        ? scores.map((v, t) => v + WITNESSED * interest.happening[t] * (interest.share[ph.clip_id]?.[t] ?? 0))
+        : scores);
+    /* And what a cut costs at each second: more where something is happening. */
+    const costs = new Array(seconds + 1).fill(cutCost).map((c, t) =>
+      interest && interest.known && t > 0 && t < seconds ? c * (1 + DURING * interest.happening[t]) : c);
+    const sums = worth.map((scores) => {
       const out = [0];
       for (const s of scores) out.push(out[out.length - 1] + (Number.isNaN(s) ? 0 : s));
       return out;
@@ -3614,7 +3654,7 @@ STAGES.cut = (() => {
           for (const [key, state] of best[first]) {
             const [previous, before] = key.split(",").map(Number);
             const held = previous === i;
-            let cost = held || first === 0 ? 0 : cutCost;
+            let cost = held || first === 0 ? 0 : costs[first];
             if (!held && before === i) cost += returnCost;
             const value = state.value + gained - cost;
             const next = `${i},${held ? before : previous}`;
@@ -3643,7 +3683,7 @@ STAGES.cut = (() => {
     return shots;
   }
 
-  function reasonFor(shots, list, index) {
+  function reasonFor(shots, list, index, interest) {
     const [i, first, end] = shots[index];
     const mean = (scores) => {
       const inside = scores.slice(first, end).filter((v) => !Number.isNaN(v));
@@ -3654,21 +3694,46 @@ STAGES.cut = (() => {
     const alone = [...Array(end - first)].filter((_, k) =>
       list.every((a, position) => position === i || Number.isNaN(a.scores[first + k]))).length;
     if (!seen.length || alone > (end - first) / 2) return "the only angle recording";
+    /* cut.py's _saw_most: it won on what it was pointed at, which is the truer reason. */
+    if (interest && interest.known) {
+      const caught = (ph) => mean((interest.share[ph.clip_id] ?? []).map((v, t) => v * interest.happening[t]));
+      const mine = caught(list[i].ph);
+      const theirs = Math.max(...list.filter((_, position) => position !== i).map((a) => caught(a.ph)), 0);
+      if (mine > 0 && mine > theirs) {
+        return theirs <= 0
+          ? "caught what was happening, which the others missed"
+          : "caught what was happening, and looked better of those that did";
+      }
+    }
     if (mean(list[i].scores) < Math.max(...seen)) return "kept rolling: cutting away would have cost more";
     return "best picture of the angles recording";
   }
 
   async function run() {
+    const button = $("cut-run");
     const solution = await STAGES.solve.ensure();
     const found = angles(solution);
     if (!found) { plan = null; render(); return; }
+    /* What happened, if the clips have been watched and fused. Asking for it runs those steps,
+       which is why it only happens when the box is ticked. */
+    let interest = null;
+    if ($("cut-knows").checked) {
+      setBusy(button, true, "reading what happened…");
+      const fused = await STAGES.fuse.ensure((step) => $("cut-status").replaceChildren(step));
+      interest = interestOf(
+        fused.events, found.start, found.seconds,
+        found.list.map(({ ph }) => ph.clip_id),
+      );
+      setBusy(button, false, "▶ Cut the film");
+    }
     const settings = {
       minShot: +$("cut-min").value,
       cutCost: +$("cut-cost").value,
       returnCost: $("cut-return").checked ? RETURN_COST : 0,
+      interest,
     };
     const shots = choose(found.list, found.seconds, settings);
-    plan = { ...found, shots, reasons: shots.map((_, i) => reasonFor(shots, found.list, i)) };
+    plan = { ...found, shots, interest, reasons: shots.map((_, i) => reasonFor(shots, found.list, i, interest)) };
     render();
   }
 
