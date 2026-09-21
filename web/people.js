@@ -50,13 +50,26 @@ function render(found, people, nameOf, colorOf, jumpTo) {
   $("people-list").innerHTML = people
     .slice(0, MOST_SHOWN)
     .map((person) => {
-      const angles = (person.seen ?? [])
-        .map(
-          (seen) => `<button type="button" class="who click" style="--c:${colorOf(seen.clip_id)}"
-            data-at="${seen.t_master_start_s}"
-            title="Watch ${formatTime(seen.t_master_start_s, 1)}, where ${esc(nameOf[seen.clip_id] ?? seen.clip_id)} first saw them">
-            <i></i><span>${esc(nameOf[seen.clip_id] ?? seen.clip_id)}</span></button>`,
-        )
+      // One chip per angle, not per stretch: a phone that lost somebody and found them again is
+      // still one angle, and two chips for one clip only reads as a mistake.
+      const first = new Map();
+      for (const seen of person.seen ?? []) {
+        const earliest = first.get(seen.clip_id);
+        if (earliest === undefined || seen.t_master_start_s < earliest.at) {
+          first.set(seen.clip_id, { at: seen.t_master_start_s, times: (earliest?.times ?? 0) + 1 });
+        } else {
+          earliest.times += 1;
+        }
+      }
+      const angles = [...first]
+        .sort((a, b) => a[1].at - b[1].at)
+        .map(([clipId, { at, times }]) => {
+          const name = esc(nameOf[clipId] ?? clipId);
+          const again = times > 1 ? `, which caught them ${times} times` : "";
+          return `<button type="button" class="who click" style="--c:${colorOf(clipId)}"
+            data-at="${at}" title="Watch ${formatTime(at, 1)}, where ${name} first saw them${again}">
+            <i></i><span>${name}</span>${times > 1 ? `<b>×${times}</b>` : ""}</button>`;
+        })
         .join("");
       const flag = !person.across_angles
         ? `<span class="pill" title="Only one phone caught this person. That is the usual case at a real event, not a failure to match.">one angle</span>`
