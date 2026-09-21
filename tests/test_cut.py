@@ -8,9 +8,12 @@ import synth
 from conftest import needs_ffmpeg, run_ffmpeg
 
 from scenefold.cut import (
+    BETTER,
     FILM_NAME,
     KEPT_ROLLING,
     ONLY_ANGLE,
+    SAW_IT,
+    SAW_IT_TOO,
     CutError,
     CutSettings,
     Film,
@@ -21,6 +24,8 @@ from scenefold.cut import (
     save_cut,
 )
 from scenefold.ingest import ingest
+from scenefold.interest import measure
+from scenefold.knowledge import Event, Evidence
 from scenefold.manifest import Clip, ClipStatus, Proxy, Source
 from scenefold.media import probe
 from scenefold.quality import Scored
@@ -288,3 +293,125 @@ def test_the_film_can_be_planned_without_rendering(tmp_path):
     assert load_cut(data_dir / "plan-me") == film
     assert not (data_dir / "plan-me" / FILM_NAME).exists()
     assert film.shots[0].reason == ONLY_ANGLE
+
+
+LAST_INTEREST = None  # what the most recent with_interest() call weighed, for a test to check
+PLACED_FOR_INTEREST: list = []
+
+
+def with_interest(placements, scores, events, settings: CutSettings = SETTINGS) -> Film:
+    """The same, with an event store telling the cut what was happening and who saw it."""
+    timeline = Timeline(
+        event_id="made-up",
+        created_at=WHEN,
+        settings=SyncSettings(),
+        duration_s=max(p.offset_s + p.duration_s for p in placements),
+        clips=placements,
+        pairs=[],
+    )
+    clips = {p.clip_id: clip(p.clip_id, p.duration_s) for p in placements}
+    scored = {
+        clip_id: Scored(values, {name: values for name in ("sharpness", "steadiness", "exposure")})
+        for clip_id, values in scores.items()
+    }
+    microphone, _ = choose_microphone(placements)
+    start_s = microphone.offset_s + (microphone.heard_late_s or 0.0)
+    seconds = int(microphone.duration_s)
+    found = measure(events, start_s, seconds, [p.clip_id for p in placements])
+    global LAST_INTEREST, PLACED_FOR_INTEREST  # noqa: PLW0603 - so a test can look at what it weighed
+    LAST_INTEREST, PLACED_FOR_INTEREST = found, placements
+    return plan_cut(timeline, scored, clips, settings, interest=found)
+
+
+def found_at(film: Film, at_s: float) -> float:
+    """How much was happening at a second of the film, as the cut weighed it."""
+    microphone = next(p for p in PLACED_FOR_INTEREST if p.clip_id == film.audio_clip_id)
+    start_s = microphone.offset_s + (microphone.heard_late_s or 0.0)
+    return float(LAST_INTEREST.happening[int(at_s - start_s)])
+
+
+def moment(t_master_s, saw, strength=1.0):
+    return Event(
+        event_id=f"moment-{t_master_s}",
+        t_master_s=t_master_s,
+        kind="sound",
+        strength=strength,
+        recording=2,
+        evidence=[
+            Evidence(clip_id=c, t_local_s=t_master_s, kind="sound", strength=strength) for c in saw
+        ],
+    )
+
+
+def test_the_angle_that_caught_the_moment_wins_it_from_a_prettier_one():
+    """The limit this phase set out to fix: a sharp shot of the floor beating the moment itself."""
+    placements = [placed("pretty", 0, 40), placed("pointed", 0, 40)]
+    scores = {"pretty": np.full(40, 0.62), "pointed": np.full(40, 0.45)}
+    # with nothing known, the prettier angle holds the whole film
+    assert {shot.clip_id for shot in event(placements, scores).shots} == {"pretty"}
+    # but several phones caught something in the middle, and only one angle was pointed at it
+    film = with_interest(placements, scores, [moment(float(t), ["pointed"]) for t in range(18, 24)])
+    shown = {shot.clip_id for shot in film.shots}
+    assert "pointed" in shown
+    middle = next(s for s in film.shots if s.start_s <= 20 < s.end_s)
+    assert middle.clip_id == "pointed"
+    assert middle.reason == SAW_IT
+
+
+def test_an_angle_still_has_to_be_worth_looking_at():
+    """Seeing the moment is worth something, not everything: a hopeless picture still loses."""
+    film = with_interest(
+        [placed("hopeless", 0, 40), placed("good", 0, 40)],
+        {"hopeless": np.full(40, 0.05), "good": np.full(40, 0.95)},
+        [moment(float(t), ["hopeless"]) for t in range(18, 24)],
+    )
+    assert {shot.clip_id for shot in film.shots} == {"good"}
+
+
+def test_where_two_angles_both_saw_it_the_picture_decides():
+    film = with_interest(
+        [placed("a", 0, 40), placed("b", 0, 40)],
+        {"a": np.full(40, 0.40), "b": np.full(40, 0.85)},
+        [moment(float(t), ["a", "b"]) for t in range(18, 24)],
+    )
+    assert {shot.clip_id for shot in film.shots} == {"b"}
+
+
+def test_a_shot_won_against_an_angle_that_also_saw_it_says_so():
+    film = with_interest(
+        [placed("saw-less", 0, 40), placed("saw-more", 0, 40)],
+        {"saw-less": np.full(40, 0.5), "saw-more": np.full(40, 0.5)},
+        [moment(float(t), ["saw-more"]) for t in range(4, 36)]
+        + [moment(float(t), ["saw-less", "saw-more"]) for t in range(4, 36, 4)],
+    )
+    reasons = {shot.reason for shot in film.shots}
+    assert reasons <= {SAW_IT, SAW_IT_TOO, ONLY_ANGLE, KEPT_ROLLING} | set(BETTER.values())
+    assert SAW_IT_TOO in reasons or SAW_IT in reasons
+
+
+def test_an_event_with_no_store_cuts_exactly_as_it_did_before():
+    placements = [placed("a", 0, 40), placed("b", 0, 40)]
+    scores = {"a": np.concatenate([np.full(20, 0.9), np.full(20, 0.3)]), "b": np.full(40, 0.6)}
+    before = event(placements, scores)
+    after = with_interest(placements, scores, [])
+    assert [(s.clip_id, s.start_s, s.end_s) for s in before.shots] == [
+        (s.clip_id, s.start_s, s.end_s) for s in after.shots
+    ]
+
+
+def test_the_film_cuts_before_a_moment_rather_than_across_it():
+    """An editor cuts on the quiet in front of a moment. So does this."""
+    # 'first' is gently better early and 'second' gently better late, so the cut has to happen
+    # somewhere in the middle but nothing forces the exact second. That is when craft decides.
+    placements = [placed("first", 0, 60), placed("second", 0, 60)]
+    scores = {
+        "first": np.concatenate([np.full(30, 0.62), np.full(30, 0.50)]),
+        "second": np.concatenate([np.full(30, 0.50), np.full(30, 0.62)]),
+    }
+    # something big happens right where the cut would otherwise land
+    film = with_interest(placements, scores, [moment(30.0, ["first", "second"], strength=1.0)])
+    boundaries = [shot.start_s for shot in film.shots[1:]]
+    assert boundaries, "the film should still cut somewhere"
+    assert all(at != 30.0 for at in boundaries), boundaries
+    # and where it does cut, nothing much is happening
+    assert all(found_at(film, at) < 0.9 for at in boundaries)

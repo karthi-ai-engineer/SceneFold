@@ -23,7 +23,9 @@ from pathlib import Path
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from scenefold import interest as interest_mod
 from scenefold import media, quality
+from scenefold.interest import Interest
 from scenefold.manifest import (
     Clip,
     ManifestError,
@@ -38,6 +40,8 @@ CUT_NAME = "cut.json"
 FILM_NAME = "cut.mp4"
 ONLY_ANGLE = "the only angle recording"
 KEPT_ROLLING = "kept rolling: cutting away would have cost more than it gained"
+SAW_IT = "caught what was happening, which the other angles missed"
+SAW_IT_TOO = "caught what was happening, and had the better picture of those that did"
 BETTER = {
     "sharpness": "sharpest picture of the angles recording",
     "steadiness": "steadiest picture of the angles recording",
@@ -98,10 +102,20 @@ class Angle:
     clip: Clip
     scores: np.ndarray  # per master second from the film's start; NaN where it wasn't recording
     measures: dict[str, np.ndarray]  # the same for each raw measure, to explain a choice
+    # What the event store says this angle was pointed at, per second, already weighted. Zero
+    # everywhere when nothing has been fused yet, which leaves the picture score deciding alone.
+    saw: np.ndarray | None = None
 
     @property
     def clip_id(self) -> str:
         return self.placement.clip_id
+
+    @property
+    def worth(self) -> np.ndarray:
+        """What a second of this angle is worth: how it looks, plus what it was pointed at."""
+        if self.saw is None:
+            return self.scores
+        return self.scores + self.saw
 
     def local_time(self, master_s: float) -> float:
         """Where a master time sits in this clip, with its pictures lined up (not its sound)."""
@@ -129,8 +143,13 @@ def plan_cut(
     scores: dict[str, quality.Scored],
     clips: dict[str, Clip],
     settings: CutSettings | None = None,
+    interest: Interest | None = None,
 ) -> Film:
-    """Choose the shots (pure): which angle to show when, and why."""
+    """Choose the shots (pure): which angle to show when, and why.
+
+    `interest` is what the event store knows about this stretch of clock (interest.py). Without it
+    the film is chosen on the pictures alone, which is what it did before Phase 9.
+    """
     settings = settings or CutSettings()
     placed = [c for c in timeline.clips if c.placed and c.clip_id in clips]
     if not placed:
@@ -153,10 +172,11 @@ def plan_cut(
             name: _on_master(placement, values, start_s, seconds)
             for name, values in own.measures.items()
         }
-        angles.append(Angle(placement, clips[placement.clip_id], on_clock, measures))
+        saw = interest.worth(placement.clip_id) if interest is not None else None
+        angles.append(Angle(placement, clips[placement.clip_id], on_clock, measures, saw))
     if not angles:
         raise CutError("no clip's pictures could be scored; are the working copies there?")
-    shots = _choose_shots(angles, seconds, settings)
+    shots = _choose_shots(angles, seconds, settings, interest)
     mic_rate = 1 + (microphone.drift_ppm or 0.0) * 1e-6
     return Film(
         event_id=timeline.event_id,
@@ -167,7 +187,7 @@ def plan_cut(
         audio_clip_id=microphone.clip_id,
         audio_reason=audio_reason,
         audio_end_s=round(seconds * mic_rate, 3),
-        shots=[_describe(shot, angles, start_s, mic_rate) for shot in shots],
+        shots=[_describe(shot, angles, start_s, mic_rate, interest) for shot in shots],
     )
 
 
@@ -187,7 +207,7 @@ def _on_master(
 
 
 def _choose_shots(
-    angles: list[Angle], seconds: int, settings: CutSettings
+    angles: list[Angle], seconds: int, settings: CutSettings, interest: Interest | None = None
 ) -> list[tuple[int, int, int]]:
     """The best sequence of shots over the whole film: (angle index, first second, last second+1).
 
@@ -201,8 +221,20 @@ def _choose_shots(
     """
     lengths = range(int(settings.min_shot_s), int(settings.max_shot_s) + 1)
     sums = [
-        np.concatenate([[0.0], np.nan_to_num(angle.scores, nan=0.0).cumsum()]) for angle in angles
+        np.concatenate([[0.0], np.nan_to_num(angle.worth, nan=0.0).cumsum()]) for angle in angles
     ]
+    # What a cut costs at each second: more where something is happening, so the film cuts on the
+    # quiet before a moment rather than across it.
+    costs = (
+        np.array(
+            [
+                interest_mod.cutting_cost(interest, at, settings.cut_cost)
+                for at in range(seconds + 1)
+            ]
+        )
+        if interest is not None and interest.known
+        else np.full(seconds + 1, settings.cut_cost)
+    )
     # (angle, the angle before it) -> (score so far, the piece that ended here, where it came from)
     best: list[dict[tuple[int, int], tuple[float, tuple[int, int, int], tuple[int, int] | None]]]
     best = [{} for _ in range(seconds + 1)]
@@ -216,7 +248,7 @@ def _choose_shots(
                 gained = float(sums[index][end] - sums[index][first])
                 for (previous, before), (so_far, _, _) in best[first].items():
                     held = previous == index
-                    cost = 0.0 if held or first == 0 else settings.cut_cost
+                    cost = 0.0 if held or first == 0 else float(costs[first])
                     if not held and before == index:
                         cost += settings.return_cost  # straight back to the angle before last
                     value = so_far + gained - cost
@@ -255,7 +287,11 @@ def _one_angle_all_through(angles: list[Angle], seconds: int) -> list[tuple[int,
 
 
 def _describe(
-    shot: tuple[int, int, int], angles: list[Angle], start_s: float, mic_rate: float
+    shot: tuple[int, int, int],
+    angles: list[Angle],
+    start_s: float,
+    mic_rate: float,
+    interest: Interest | None = None,
 ) -> Shot:
     """Turn a chosen shot into the record of it, with why that angle won."""
     index, first, end = shot
@@ -276,6 +312,10 @@ def _describe(
     )
     if not rivals or alone > (end - first) / 2:
         reason = ONLY_ANGLE
+    elif (watching := _saw_most(angle, rivals, first, end)) is not None:
+        # It won on what it was pointed at, so say that rather than naming a picture measure: it
+        # is the truer reason, and the one a person would give.
+        reason = watching
     elif mine < max(others.values()):
         reason = KEPT_ROLLING
     else:
@@ -292,6 +332,22 @@ def _describe(
         score=round(mine, 4),
         reason=reason,
     )
+
+
+def _saw_most(angle: Angle, rivals: list[Angle], first: int, end: int) -> str | None:
+    """Whether this angle won the shot by being pointed at what happened, and how clearly.
+
+    None when nothing much happened here, or when the angles that saw it are level: then the
+    picture decided, and the reason should say so.
+    """
+    mine = _mean(angle.saw, first, end)
+    if mine <= 0:
+        return None
+    theirs = max((_mean(other.saw, first, end) for other in rivals), default=0.0)
+    if mine <= theirs:
+        return None
+    # It saw more of what happened than any rival. Did the others see it at all?
+    return SAW_IT if theirs <= 0 else SAW_IT_TOO
 
 
 def _strongest(angle: Angle, rivals: list[Angle], first: int, end: int) -> str:
@@ -395,13 +451,47 @@ def cut_event(
         if progress:
             progress(f"looking at {clip.source.name}")
         measured.append(quality.score_clip(clip.clip_id, event_dir / clip.proxy.video))
-    film = plan_cut(timeline, quality.combine(measured), clips, settings)
+    film = plan_cut(
+        timeline,
+        quality.combine(measured),
+        clips,
+        settings,
+        interest=_what_happened(event_dir, timeline, clips, settings, progress),
+    )
     save_cut(event_dir, film)
     if render:
         if progress:
             progress(f"rendering {len(film.shots)} shots")
         render_cut(event_dir, film, clips)
     return film
+
+
+def _what_happened(
+    event_dir: Path,
+    timeline: Timeline,
+    clips: dict[str, Clip],
+    settings: CutSettings | None,
+    progress=None,
+) -> Interest | None:
+    """What the event store knows about the stretch the film will cover, if anything does.
+
+    The film's span is worked out the same way plan_cut does, because interest has to line up
+    second for second with the picture scores it is added to.
+    """
+    placed = [c for c in timeline.clips if c.placed and c.clip_id in clips]
+    if not placed:
+        return None
+    microphone, _ = choose_microphone(placed)
+    start_s = microphone.offset_s + (microphone.heard_late_s or 0.0)
+    seconds = int(microphone.duration_s / (1 + (microphone.drift_ppm or 0.0) * 1e-6))
+    found = interest_mod.read_interest(event_dir, start_s, seconds, [c.clip_id for c in placed])
+    if progress:
+        progress(
+            f"reading what happened: {found.events} moments"
+            if found.known
+            else "no event store yet, so the pictures decide alone"
+        )
+    return found if found.known else None
 
 
 def save_cut(event_dir: Path, film: Film) -> Path:
