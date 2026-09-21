@@ -563,6 +563,23 @@ comes from the picture score (`quality.py`), not from the model's opinion of its
 - Faithfulness is checked by hand on the test event (target: ≥ 90% supported).
 - End-to-end demo works: drop in clips → synced viewer, story, disagreements. Tag `v0.5.0`.
 
+**Progress (2026-09-21)**
+- `scenefold story <event>` (`story.py`) writes the account from `knowledge.sqlite` and nothing
+  else. The model gets a numbered list of moments — when, what the clearest camera showed, how many
+  clips caught it, how they disagreed — and writes one sentence each, ending with the number.
+- **The citations are checked in code**: the moment must exist and a clip that saw it must have
+  been filming then. A sentence that fails is dropped and the reason kept in `story.json`, so what
+  was thrown away stays visible. On `coldplay-jan26`: 15 sentences kept, none dropped, 4 marked as
+  moments the clips disagreed about, every line naming the clips behind it.
+- The moments told are spread across the event rather than taken strongest-first, which would
+  bunch the account around the noisiest minute.
+- Two things learned: a citation written after the full stop ("the lights drop. [1]") splits off
+  and would credit the next sentence with the previous one's footage, so a mark at the start of a
+  fragment is carried back; and two moments sharing one twelve-second description make the model
+  write the same sentence twice, so identical neighbours are merged into one line with both
+  citations.
+- Left in this phase: questions answered from the store, the panels in the viewer, and the tag.
+
 ---
 
 ## Phase 8: Cross-angle identity

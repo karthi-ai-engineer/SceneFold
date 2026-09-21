@@ -79,6 +79,27 @@ class Reading:
 class Judge(Protocol):
     """Anything that can read two accounts and say whether they fit together."""
 
+    def plain(self, prompt: str, timeout_s: float | None = None) -> str:
+        """Ask the model something in words and take its answer in words.
+
+        The story uses this: it needs sentences, not a form to fill in.
+        """
+        body = json.dumps({
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+            "think": False,
+            "options": {"temperature": 0.3},
+        }).encode()  # fmt: skip
+        request = urllib.request.Request(
+            f"{self.host}/api/generate", body, {"Content-Type": "application/json"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout_s or self.timeout_s) as response:
+                return str(json.loads(response.read()).get("response", "")).strip()
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise JudgeError(f"could not reach the model at {self.host}: {exc}") from exc
+
     def read(self, first: str, second: str) -> Reading: ...
 
 
@@ -89,6 +110,27 @@ class OllamaJudge:
     model: str = "qwen3.5:4b"
     host: str = OLLAMA_HOST
     timeout_s: float = 120.0
+
+    def plain(self, prompt: str, timeout_s: float | None = None) -> str:
+        """Ask the model something in words and take its answer in words.
+
+        The story uses this: it needs sentences, not a form to fill in.
+        """
+        body = json.dumps({
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+            "think": False,
+            "options": {"temperature": 0.3},
+        }).encode()  # fmt: skip
+        request = urllib.request.Request(
+            f"{self.host}/api/generate", body, {"Content-Type": "application/json"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout_s or self.timeout_s) as response:
+                return str(json.loads(response.read()).get("response", "")).strip()
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise JudgeError(f"could not reach the model at {self.host}: {exc}") from exc
 
     def read(self, first: str, second: str) -> Reading:
         body = json.dumps({

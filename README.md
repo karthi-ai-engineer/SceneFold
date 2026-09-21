@@ -132,6 +132,32 @@ clearly better view)
 - Everything lands in `knowledge.sqlite`, which a later phase can ask questions of, and every claim
   carries the clip it came from.
 
+## What the story does
+
+`scenefold story <event>` writes a short account of what happened, from the event store and
+nothing else:
+
+```
+  0:33.9  A large concert at night, the audience holding up glowing lights, the stage shifting
+          from bright white beams to warm yellow-green.
+          from f098e4bb
+  2:48.2  A performer stands on a circular stage while the audience holds up red lights.
+          (the clips disagree here)
+          from 34b92d86, f098e4bb
+```
+
+Every sentence ends up pointing at a moment, and the citations are checked **in code, not by the
+model**: the moment has to exist in the store, and a clip that saw it has to have been filming at
+that time. A sentence that fails is removed and the reason kept in `story.json`, so a reader sees
+only what the footage supports and anyone auditing can see what was thrown away.
+
+That is the difference between a story about an event and a story that merely sounds like one: not
+that the model behaves, but that nothing reaches a reader without footage behind it. On the concert
+it kept 15 sentences, dropped none, and marked 4 as moments the clips disagreed about.
+
+**What this cannot check**: whether a sentence that cites a real moment describes it truthfully. A
+model can cite correctly and still embroider. That needs a person watching footage they know.
+
 ## What the cut does
 
 `scenefold cut <event>` edits the angles into one film, with no AI and no idea of what is being

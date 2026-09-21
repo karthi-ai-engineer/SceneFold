@@ -17,6 +17,7 @@ from scenefold.observations import OBSERVATIONS_DIR, SpeechSettings, WatchSettin
 from scenefold.observe import WatchError, observe_event
 from scenefold.picture_offset import metres
 from scenefold.speech import SpeechError
+from scenefold.story import STORY_NAME, StoryError, tell_event
 from scenefold.sync import SyncError, sync_event
 from scenefold.timeline import TIMELINE_NAME, ClipPlacement, Timeline
 from scenefold.view import DEFAULT_PORT, ViewError, serve
@@ -149,6 +150,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     fuse_parser.add_argument(
         "--model", default=WatchSettings().model, help="the model that reads the accounts"
     )
+    story_parser = commands.add_parser(
+        "story",
+        help="tell what happened, with every sentence citing the footage",
+        description="Write a short account of the event from what the clips agreed on, checking "
+        "in code that every sentence points at a moment real footage backs up. Writes "
+        "<data-dir>/<event>/story.json.",
+    )
+    story_parser.add_argument("event", help="event name used with fuse, e.g. match-01")
+    story_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="folder that holds event workspaces (default: ./data)",
+    )
+    story_parser.add_argument(
+        "--model", default=WatchSettings().model, help="the model that writes it"
+    )
     cut_parser = commands.add_parser(
         "cut",
         help="edit the angles into one film",
@@ -199,6 +217,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "evaluate": _run_evaluate,
         "observe": _run_observe,
         "fuse": _run_fuse,
+        "story": _run_story,
         "cut": _run_cut,
         "view": _run_view,
     }
@@ -381,6 +400,29 @@ def _run_fuse(args: argparse.Namespace) -> int:
         if event.summary:
             print(f"      {event.summary[:100]}")
     print(f"Knowledge: {event_dir / KNOWLEDGE_NAME}")
+    return 0
+
+
+def _run_story(args: argparse.Namespace) -> int:
+    try:
+        story = tell_event(
+            args.event, data_dir=args.data_dir, model=args.model, progress=_print_step
+        )
+    except (StoryError, JudgeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"\nWhat happened at {story.event_id}, as the footage has it:\n")
+    for line in story.lines:
+        minutes, rest = divmod(line.t_master_s, 60)
+        mark = " (the clips disagree here)" if line.disputed else ""
+        clips = ", ".join(clip[:8] for clip in line.clips)
+        print(f"  {int(minutes)}:{rest:04.1f}  {line.text}{mark}")
+        print(f"          from {clips}")
+    if story.dropped:
+        print(f"\nLeft out, having nothing behind it: {len(story.dropped)}")
+        for reason in story.dropped[:3]:
+            print(f"  {reason[:110]}")
+    print(f"\nStory: {Path(args.data_dir) / story.event_id / STORY_NAME}")
     return 0
 
 

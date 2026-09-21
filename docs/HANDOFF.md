@@ -52,7 +52,7 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 374 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 388 passed, 1 xfailed (the known chorus limit)
 node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+)
 ```
 
@@ -475,3 +475,10 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    concert it read 54 distinct pairs and found no contradictions — five phones pointed at one
    stage genuinely agree, and the feature will earn its keep on footage where people differ.
    Caching by sentence pair cut 311 events to 54 readings.
+6. **Phase 7 started**: `scenefold story` writes a cited account from the event store. Validation
+   is in code, not in the prompt — the cited moment must exist and a clip that saw it must have
+   been filming then; failures are dropped with their reason into `story.json`. 15 lines on the
+   concert, none dropped, 4 disputed. Left: Q&A over the store, the viewer panels, and `v0.5.0`.
+7. Two parsing traps worth remembering: a citation after the full stop ("drop. [1]") gets split
+   onto the next sentence and must be carried back, and neighbouring moments that share one
+   description make the model repeat itself, so identical adjacent lines are merged.
