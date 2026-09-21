@@ -614,11 +614,33 @@ visibly rather than quietly where people are too small to describe. A detector p
 re-identification embedding is the better instrument and stays the plan; this is the version that
 could be measured this week.
 
+**Measured on six angles of the Jiku stage footage** (2026-09-21, `qwen3.5:4b`, 20 minutes of
+footage, about 13 minutes of asking):
+
+| | |
+| --- | --- |
+| Sightings the model gave | 465 over 6 clips |
+| Of those, describing somebody | 425 (the rest were "a person", "dark clothing") |
+| Tracklets after joining within each clip | 80 |
+| People after matching across clips | 26 |
+| Caught by more than one phone | 16 |
+| Of those, beyond doubt | 7 |
+| People split inside one clip | 0 — the one outfit seen twice was two people on screen together |
+
+Raising the bar from 0.30 to 0.80 moves the count smoothly (21 → 81 people), so it does not sit on
+a knife edge. Above about 0.6 a clip's own view of one person starts fragmenting, which inflates
+"caught by more than one phone" with pieces of the same person; 0.45 is where the count of people
+best matches what is in the footage.
+
 **Done when**
 - Matching accuracy is measured on a hand-labeled set; low-confidence matches show as unknown, never forced.
   *Half met: the matching maths is measured on hand-written pairs (`tests/test_identity.py`), and
-  unmatched and unsure are both reported. Accuracy on real footage needs a filmed event where who is
-  who is known, which is the same hand-labelled event Phases 5 and 6 are waiting on.*
+  unmatched and unsure are both reported. What is **not** measured is whether each match is the
+  right person. A spot check of four angles at one moment confirmed the sync and the machinery, and
+  also showed the weak point plainly: the model described people on stage well ("black sleeveless
+  top and dark jeans", "brown hat"), and described others in ways no frame supported. A match
+  between two consistent mistakes still matches. Only an event where who is who is known can
+  separate the two, which is the same hand-labelled event Phases 5 and 6 are waiting on.*
 
 **Time-box:** this is the research-heavy phase. If accuracy stalls, ship what works and document the limits.
 
