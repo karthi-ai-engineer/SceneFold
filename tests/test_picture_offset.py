@@ -141,8 +141,8 @@ def test_delays_read_as_distance():
 
 def test_brightness_is_read_frame_by_frame(tmp_path, monkeypatch):
     width, height = picture_offset.GRID
-    frames = np.array([[10] * (width * height), [200] * (width * height)], dtype=np.uint8)
-    monkeypatch.setattr(picture_offset.media, "frame_greys", lambda *_: frames.tobytes())
+    frames = [bytes([10]) * (width * height), bytes([200]) * (width * height)]
+    monkeypatch.setattr(picture_offset.media, "grey_frames", lambda *_: iter(frames))
 
     curve = picture_offset.load_brightness(tmp_path / "clip.mp4")
 

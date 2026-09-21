@@ -5,6 +5,7 @@ import math
 import re
 import shutil
 import subprocess
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from fractions import Fraction
@@ -328,21 +329,42 @@ class ProxyResult:
     issues: list[Issue] = field(default_factory=list)
 
 
-def frame_greys(path: Path, width: int, height: int) -> bytes:
-    """Every frame of a video, shrunk to width x height and turned grey: raw 8-bit, frame by frame.
+def render(args: list[str]) -> str | None:
+    """Run FFmpeg with these arguments. None when it worked, else what went wrong, in short."""
+    proc = _run([find_tools().ffmpeg, "-hide_banner", "-v", "error", "-nostdin", "-y", *args])
+    return None if proc.returncode == 0 else error_summary(proc.stderr)
 
-    Used to read how bright a clip is over time (see picture_offset.py). Shrinking happens inside
-    FFmpeg, so only a few bytes a frame come back however large the video is.
+
+def grey_frames(path: Path, width: int, height: int, fps: float | None = None) -> Iterator[bytes]:
+    """A video's frames, shrunk to width x height and turned grey, one raw 8-bit frame at a time.
+
+    How Scenefold looks at pictures: how bright a clip is over time (picture_offset.py) and how
+    good it looks (quality.py). Shrinking happens inside FFmpeg and frames arrive one by one, so a
+    long clip costs a few kilobytes of memory however large the video is. `fps` samples the video
+    at that many frames a second instead of reading every one.
     """
-    proc = subprocess.run(
+    rate = f"fps={fps}," if fps else ""
+    proc = subprocess.Popen(
         [find_tools().ffmpeg, "-v", "error", "-nostdin", "-i", str(path),
-         "-vf", f"scale={width}:{height},format=gray", "-f", "rawvideo", "-"],
-        stdin=subprocess.DEVNULL, capture_output=True,
+         "-vf", f"{rate}scale={width}:{height},format=gray", "-f", "rawvideo", "-"],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )  # fmt: skip
-    if proc.returncode != 0:
-        stderr = proc.stderr.decode("utf-8", errors="replace")
-        raise ProxyError(f"could not read the pictures of {path.name}: {error_summary(stderr)}")
-    return proc.stdout
+    read_them_all = False
+    try:
+        while frame := proc.stdout.read(width * height):
+            if len(frame) < width * height:
+                break  # a half-written last frame: the clip ends here
+            yield frame
+        read_them_all = True
+    finally:
+        proc.stdout.close()
+        stderr = proc.stderr.read().decode("utf-8", errors="replace")
+        proc.stderr.close()
+        failed = proc.wait() != 0
+        # A caller that stops early leaves FFmpeg writing into a closed pipe, and it complains;
+        # that is the caller's doing, not a bad file, so only a full read can report a failure.
+        if failed and read_them_all:
+            raise ProxyError(f"could not read the pictures of {path.name}: {error_summary(stderr)}")
 
 
 def proxy_size(video: VideoStream, max_short_side: int) -> tuple[int, int]:

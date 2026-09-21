@@ -49,9 +49,11 @@ class PictureSolution(NamedTuple):
 def load_brightness(path: Path) -> np.ndarray:
     """How bright each frame of a working copy is, as a curve at FPS frames a second."""
     width, height = GRID
-    raw = np.frombuffer(media.frame_greys(path, width, height), dtype=np.uint8)
-    whole = len(raw) // (width * height) * (width * height)
-    return raw[:whole].reshape(-1, width * height).mean(axis=1)
+    means = [
+        np.frombuffer(frame, dtype=np.uint8).mean()
+        for frame in media.grey_frames(path, width, height)
+    ]
+    return np.array(means)
 
 
 def changes(curve: np.ndarray, fps: float = FPS) -> np.ndarray:

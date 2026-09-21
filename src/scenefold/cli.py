@@ -7,6 +7,7 @@ from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
+from scenefold.cut import CUT_NAME, FILM_NAME, CutError, Film, cut_event
 from scenefold.evaluate import FRAME_S, EvaluationError, evaluate_event
 from scenefold.ingest import IngestError, InputResult, Outcome, ingest
 from scenefold.picture_offset import metres
@@ -82,6 +83,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=Path("data"),
         help="folder that holds event workspaces (default: ./data)",
     )
+    cut_parser = commands.add_parser(
+        "cut",
+        help="edit the angles into one film",
+        description="Choose the best angle for each moment and cut the clips into one film. "
+        "Writes <data-dir>/<event>/cut.json, which says why each shot was chosen, and cut.mp4.",
+    )
+    cut_parser.add_argument("event", help="event name used with sync, e.g. match-01")
+    cut_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="folder that holds event workspaces (default: ./data)",
+    )
+    cut_parser.add_argument(
+        "--plan-only", action="store_true", help="choose the shots but don't render the film"
+    )
     view_parser = commands.add_parser(
         "view",
         help="watch an event's clips together in the browser",
@@ -110,7 +127,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     _safe_console()
-    run = {"ingest": _run_ingest, "sync": _run_sync, "evaluate": _run_evaluate, "view": _run_view}
+    run = {
+        "ingest": _run_ingest,
+        "sync": _run_sync,
+        "evaluate": _run_evaluate,
+        "cut": _run_cut,
+        "view": _run_view,
+    }
     return run[args.command](args)
 
 
@@ -215,6 +238,37 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         f"({share:.0%})"
     )
     return 0
+
+
+def _run_cut(args: argparse.Namespace) -> int:
+    try:
+        film = cut_event(
+            args.event, data_dir=args.data_dir, render=not args.plan_only, progress=_print_step
+        )
+    except CutError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("\ninterrupted; nothing was written", file=sys.stderr)
+        return 130
+    minutes, seconds = divmod(film.duration_s, 60)
+    print(
+        f"\nFilm of {film.event_id}: {len(film.shots)} shots, {int(minutes)}:{seconds:04.1f} long, "
+        f"sound from {_name_of(film, film.audio_clip_id)} ({film.audio_reason})"
+    )
+    width = min(34, max((len(shot.name) for shot in film.shots), default=0))
+    for shot in film.shots:
+        when = f"{shot.start_s - film.start_s:6.1f}-{shot.end_s - film.start_s:6.1f} s"
+        print(f"  {when}  {shot.name[:34]:<{width}}  {shot.reason}")
+    event_dir = Path(args.data_dir) / film.event_id
+    print(f"Shots: {event_dir / CUT_NAME}")
+    if not args.plan_only:
+        print(f"Film: {event_dir / FILM_NAME}")
+    return 0
+
+
+def _name_of(film: Film, clip_id: str) -> str:
+    return next((shot.name for shot in film.shots if shot.clip_id == clip_id), clip_id)
 
 
 def _run_view(args: argparse.Namespace) -> int:
