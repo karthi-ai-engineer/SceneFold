@@ -459,8 +459,15 @@ were checked against the sound, and the README shows the viewer. Tagged `v0.1.0`
   338 s of model time, about one second of model time per 3.5 seconds of video. A second run asks
   nothing. The descriptions follow change across a window ("the stage lighting shifts from blue to
   green while the view zooms in"), which is why a window is four frames rather than one.
-- Still to do here: speech with word-level timing, snapping times to audio onsets and motion peaks,
-  and recall against a hand-labelled event (which needs the test event filmed with friends).
+- **Speech (2026-09-21)**: `speech.py` runs Whisper through faster-whisper, an optional install
+  (`uv sync --extra speech`), and keeps every word's own start and end. It tries the graphics card,
+  proves it on a moment of silence, and falls back to the processor — this machine has no cuBLAS,
+  so it uses the processor and says so. Voice detection is on by default because Whisper writes
+  invented lyrics over music: on twenty minutes of concert audio it kept one two-word line (45 s of
+  listening), and on a spoken test clip made with the computer's own voice it caught every word
+  with times. Watching and listening cache apart, so adding one never re-runs the other.
+- Still to do here: snapping the model's second-level times to audio onsets and motion peaks, and
+  recall against a hand-labelled event (which needs the test event filmed with friends).
 
 **Decision (2026-09-21): a model on this computer, not a cloud one.** Karthi already had Ollama
 with `qwen3.5:4b` — 4.7B parameters, vision, Apache-2.0, quantised to about 3.4 GB. It answers in

@@ -10,9 +10,10 @@ from pathlib import Path
 from scenefold.cut import CUT_NAME, FILM_NAME, CutError, Film, cut_event
 from scenefold.evaluate import FRAME_S, EvaluationError, evaluate_event
 from scenefold.ingest import IngestError, InputResult, Outcome, ingest
-from scenefold.observations import OBSERVATIONS_DIR, WatchSettings
+from scenefold.observations import OBSERVATIONS_DIR, SpeechSettings, WatchSettings
 from scenefold.observe import WatchError, observe_event
 from scenefold.picture_offset import metres
+from scenefold.speech import SpeechError
 from scenefold.sync import SyncError, sync_event
 from scenefold.timeline import TIMELINE_NAME, ClipPlacement, Timeline
 from scenefold.view import DEFAULT_PORT, ViewError, serve
@@ -112,6 +113,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--again",
         action="store_true",
         help="watch clips again that were already watched with the same model and question",
+    )
+    observe_parser.add_argument(
+        "--no-speech", action="store_true", help="only watch the pictures; don't listen"
+    )
+    observe_parser.add_argument(
+        "--speech-model",
+        default=SpeechSettings().model,
+        help="Whisper size to listen with: tiny, base, small, medium, large-v3 "
+        "(default: %(default)s)",
     )
     cut_parser = commands.add_parser(
         "cut",
@@ -273,14 +283,19 @@ def _run_evaluate(args: argparse.Namespace) -> int:
 
 def _run_observe(args: argparse.Namespace) -> int:
     settings = WatchSettings(model=args.model, window_s=args.window)
+    speech = None if args.no_speech else SpeechSettings(model=args.speech_model)
     try:
         watched = observe_event(
             args.event,
             data_dir=args.data_dir,
             settings=settings,
+            speech=speech,
             again=args.again,
             progress=_print_step,
         )
+    except SpeechError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     except WatchError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -289,12 +304,20 @@ def _run_observe(args: argparse.Namespace) -> int:
         return 130
     seen = sum(len(clip.observations) for clip in watched if clip)
     took = sum(clip.seconds_taken for clip in watched if clip)
+    said = sum(len(clip.speech) for clip in watched if clip)
+    heard_took = sum(clip.speech_seconds_taken or 0 for clip in watched if clip)
     print(f"\nEvent {args.event}: {seen} observations from {len(watched)} clips, {took:.0f} s")
+    if speech is not None:
+        words = sum(len(u.words) for clip in watched if clip for u in clip.speech)
+        print(f"Heard {said} stretches of speech, {words} words, in {heard_took:.0f} s")
     for clip in watched:
         if clip is None or not clip.observations:
             continue
         first = clip.observations[0]
         print(f"  {clip.name} ({len(clip.observations)}): {first.summary[:90]}")
+        if clip.speech:
+            spoken = clip.speech[0]
+            print(f"      said at {spoken.t_start_s:.0f} s: {spoken.text[:80]}")
     print(f"Observations: {Path(args.data_dir) / args.event / OBSERVATIONS_DIR}")
     return 0
 

@@ -57,6 +57,37 @@ class Observation(BaseModel):
     picture_score: float | None = None
 
 
+class SpeechSettings(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    model: str = "small"  # a Whisper size: tiny, base, small, medium, large-v3
+    language: str | None = None  # None lets the model decide, per clip
+    # Whisper fills silence with whatever it expects to hear, so speech is only kept where a voice
+    # was actually detected. At a concert most of a clip is music, and this is what stops it
+    # becoming pages of invented lyrics.
+    voice_only: bool = True
+
+    def key(self) -> str:
+        return self.model_dump_json()
+
+
+class Word(BaseModel):
+    word: str
+    t_start_s: float
+    t_end_s: float
+    sureness: float | None = None  # what the model made of its own hearing, 0 to 1
+
+
+class Utterance(BaseModel):
+    """A stretch of speech heard in one clip, with each word's own time."""
+
+    t_start_s: float
+    t_end_s: float
+    text: str
+    words: list[Word] = []
+    language: str | None = None
+
+
 class ClipObservations(BaseModel):
     schema_version: int = SCHEMA_VERSION
     clip_id: str
@@ -66,6 +97,11 @@ class ClipObservations(BaseModel):
     duration_s: float
     seconds_taken: float  # how long the model took, so the cost of a re-run is known
     observations: list[Observation] = []
+    # What was said, if anyone listened. Kept beside what was seen, cached on its own, because the
+    # two are asked of different models at different times.
+    speech: list[Utterance] = []
+    speech_settings: SpeechSettings | None = None
+    speech_seconds_taken: float | None = None
 
 
 def observations_path(event_dir: Path, clip_id: str) -> Path:

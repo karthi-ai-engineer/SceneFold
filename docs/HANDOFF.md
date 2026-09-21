@@ -52,7 +52,7 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 330 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 338 passed, 1 xfailed (the known chorus limit)
 node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+)
 ```
 
@@ -429,3 +429,17 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 7. Left in Phase 5: speech with word-level timing (faster-whisper), snapping the model's
    second-level times to audio onsets and motion peaks, and measuring recall — which needs the
    hand-labelled test event Karthi has yet to film. The simulator has no section for this step yet.
+8. **Speech landed** (`src/scenefold/speech.py`, optional install `uv sync --extra speech`). Whisper
+   through faster-whisper, word-level times, voice detection on by default. Measured: 45 s to
+   listen to 20 minutes of concert audio, which kept one two-word line — music does not become
+   invented lyrics. Verified the other way with a clip spoken by Windows' own voice: every word
+   came back, timed ("Please@3.56, find@4.24, your@4.56, seats@4.78"), with one homophone slip on
+   the `base` model ("Right" heard as "Write"). That check is a test, skipped unless the extra is
+   installed.
+9. **Two bugs of mine worth remembering.** The Whisper engine was being built once per clip, so
+   every clip loaded the model onto the graphics card, failed on the missing cuBLAS, and loaded it
+   again on the processor — minutes wasted per event, and it looked like a hang. One engine per
+   event now. And a card can load a model and only fail when asked to do arithmetic with it, so the
+   device is now tried on a moment of silence before being trusted.
+10. A `scenefold view` server left running from an earlier check held the installed command open
+    and broke `uv run`; stop stray viewers before syncing dependencies.

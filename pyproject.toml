@@ -12,6 +12,11 @@ dependencies = [
     "scipy>=1.16",
 ]
 
+[project.optional-dependencies]
+# Hearing what is said is optional: it pulls a Whisper runtime and downloads a model on first use.
+# `uv sync --extra speech`, then `scenefold observe` listens as well as watches.
+speech = ["faster-whisper>=1.1"]
+
 [project.scripts]
 scenefold = "scenefold.cli:main"
 

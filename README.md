@@ -146,8 +146,20 @@ invalidates them.
 - Running it again costs nothing: clips already watched with the same model and the same question
   are left alone (`--again` overrides).
 
+It also **listens**, if you install the speech extra. Whisper writes down what was said with a time
+for every word, which is what later phases need to find the moment somebody said something.
+
+- Whisper fills silence with whatever it expects to hear, so speech is only kept where a voice was
+  actually detected. On twenty minutes of concert footage it kept one short line — the music did
+  not become pages of invented lyrics. On a spoken test clip it caught every word, each timed.
+- It uses your graphics card if NVIDIA's maths libraries are installed, and the processor if not:
+  a missing library makes the run slower, never failed.
+- Watching and listening are cached apart, so adding speech later doesn't re-watch the pictures.
+
 ```sh
 uv run scenefold observe my-event            # needs `ollama pull qwen3.5:4b` once
+uv sync --extra speech                       # once, if you want speech as well
+uv run scenefold observe my-event --speech-model small
 ```
 
 ## Requirements

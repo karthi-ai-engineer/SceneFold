@@ -31,10 +31,12 @@ from scenefold.manifest import Clip, ManifestError, load_manifest, normalize_eve
 from scenefold.observations import (
     ClipObservations,
     Observation,
+    SpeechSettings,
     WatchSettings,
     load_observations,
     save_observations,
 )
+from scenefold.speech import FasterWhisper, Transcriber, listen_to_clip
 
 # Neutral on purpose: telling the model it is watching a concert would have it describe a concert.
 ASK = (
@@ -173,13 +175,16 @@ def observe_event(
     settings: WatchSettings | None = None,
     *,
     watcher: Watcher | None = None,
+    speech: SpeechSettings | None = None,
+    transcriber: Transcriber | None = None,
     again: bool = False,
     progress=None,
 ) -> list[ClipObservations]:
-    """Watch every clip of an event and write what each one shows.
+    """Watch every clip of an event, listen to it, and write down what it shows and says.
 
     Clips already watched with the same model and the same question are left alone, so running
-    this twice costs nothing the second time. `again` watches them anyway.
+    this twice costs nothing the second time. `again` watches them anyway. Pass `speech=None` to
+    watch only; the two halves are cached separately, so adding speech later does not re-watch.
     """
     settings = settings or WatchSettings()
     watcher = watcher or Ollama(settings.model)
@@ -203,32 +208,67 @@ def observe_event(
     todo = [clip for clip in clips if again or not _already(event_dir, clip, settings)]
     scores = _picture_scores(event_dir, todo, progress)
     waiting = {clip.clip_id for clip in todo}
+    # One engine for the whole event: loading a Whisper model costs seconds, and trying the
+    # graphics card before falling back to the processor costs more than that.
+    ears = transcriber if speech is None else transcriber or FasterWhisper(speech.model)
     out = []
     for clip in clips:
-        if clip.clip_id not in waiting:
-            out.append(load_observations(event_dir, clip.clip_id))
-            continue
-        if progress:
-            progress(f"watching {clip.source.name}")
-        seen, took = watch_clip(
-            event_dir / clip.proxy.video,
-            clip.proxy.duration_s,
-            settings,
-            watcher,
-            scores.get(clip.clip_id),
-        )
-        watched = ClipObservations(
-            clip_id=clip.clip_id,
-            name=clip.source.name,
-            created_at=now(),
-            settings=settings,
-            duration_s=clip.proxy.duration_s,
-            seconds_taken=took,
-            observations=seen,
-        )
-        save_observations(event_dir, watched)
-        out.append(watched)
+        done = load_observations(event_dir, clip.clip_id)
+        if clip.clip_id in waiting:
+            if progress:
+                progress(f"watching {clip.source.name}")
+            seen, took = watch_clip(
+                event_dir / clip.proxy.video,
+                clip.proxy.duration_s,
+                settings,
+                watcher,
+                scores.get(clip.clip_id),
+            )
+            done = ClipObservations(
+                clip_id=clip.clip_id,
+                name=clip.source.name,
+                created_at=now(),
+                settings=settings,
+                duration_s=clip.proxy.duration_s,
+                seconds_taken=took,
+                observations=seen,
+                # what was heard before still holds: the pictures were re-watched, not the sound
+                speech=done.speech if done else [],
+                speech_settings=done.speech_settings if done else None,
+                speech_seconds_taken=done.speech_seconds_taken if done else None,
+            )
+            save_observations(event_dir, done)
+        if speech is not None and done is not None:
+            done = _listen(event_dir, clip, done, speech, ears, again, progress)
+        out.append(done)
     return out
+
+
+def _listen(
+    event_dir: Path,
+    clip: Clip,
+    done: ClipObservations,
+    settings: SpeechSettings,
+    ears: Transcriber,
+    again: bool,
+    progress=None,
+) -> ClipObservations:
+    """Add what was said to what was seen, unless it was already heard the same way."""
+    if clip.proxy.audio is None:
+        return done
+    heard_already = (
+        done.speech_settings is not None and done.speech_settings.key() == settings.key()
+    )
+    if heard_already and not again:
+        return done
+    if progress:
+        progress(f"listening to {clip.source.name}")
+    heard, took = listen_to_clip(event_dir / clip.proxy.audio, settings, ears)
+    done = done.model_copy(
+        update={"speech": heard, "speech_settings": settings, "speech_seconds_taken": took}
+    )
+    save_observations(event_dir, done)
+    return done
 
 
 def _already(event_dir: Path, clip: Clip, settings: WatchSettings) -> bool:
