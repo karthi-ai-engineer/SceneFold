@@ -466,8 +466,18 @@ were checked against the sound, and the README shows the viewer. Tagged `v0.1.0`
   invented lyrics over music: on twenty minutes of concert audio it kept one two-word line (45 s of
   listening), and on a spoken test clip made with the computer's own voice it caught every word
   with times. Watching and listening cache apart, so adding one never re-runs the other.
-- Still to do here: snapping the model's second-level times to audio onsets and motion peaks, and
-  recall against a hand-labelled event (which needs the test event filmed with friends).
+- **Moments (2026-09-21)**: `moments.py` finds what can be timed exactly — growth in the sound
+  (spectral flux peaks standing 4 robust deviations above the usual) and sudden change in the
+  picture (the brightness curve sync already uses). Strength is relative to the clip, so a loud
+  event does not raise the bar for a quiet recording. Each observation is then pulled onto the
+  strongest moment inside its window, and each spoken line onto the sound that starts it, within
+  0.25 s. Measured: claps found within 50 ms of where they were placed, drawn flashes within
+  150 ms; on `coldplay-jan26`, 77 of 91 windows gained an exact time (243-444 moments a clip).
+  Where nothing stands out, the coarse time stays: the one spoken line on that event was left
+  where Whisper put it, because no onset was near it.
+- Still to do here: recall against a hand-labelled event, which needs the test event filmed with
+  friends. Worth knowing: the moment inside a window is the most prominent thing that happened
+  while the model was looking, which is not always the thing it chose to describe.
 
 **Decision (2026-09-21): a model on this computer, not a cloud one.** Karthi already had Ollama
 with `qwen3.5:4b` — 4.7B parameters, vision, Apache-2.0, quantised to about 3.4 GB. It answers in

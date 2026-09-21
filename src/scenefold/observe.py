@@ -20,16 +20,18 @@ import time
 import urllib.error
 import urllib.request
 from base64 import b64encode
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 import numpy as np
 
-from scenefold import media, quality
+from scenefold import media, moments, quality
 from scenefold.manifest import Clip, ManifestError, load_manifest, normalize_event_id, now
 from scenefold.observations import (
     ClipObservations,
+    Moment,
     Observation,
     SpeechSettings,
     WatchSettings,
@@ -58,6 +60,7 @@ ANSWER = {  # what the model must answer with; Ollama holds it to this shape
 }
 OLLAMA_HOST = "http://127.0.0.1:11434"
 MAX_SUBJECTS = 8
+SPEECH_SNAP_S = 0.25  # how far a spoken line may be moved onto the sound that starts it
 
 
 class WatchError(Exception):
@@ -214,6 +217,11 @@ def observe_event(
     out = []
     for clip in clips:
         done = load_observations(event_dir, clip.clip_id)
+        found = done.moments if done and done.moments and not again else None
+        if found is None:
+            if progress:
+                progress(f"timing the moments in {clip.source.name}")
+            found = _moments_of(event_dir, clip)
         if clip.clip_id in waiting:
             if progress:
                 progress(f"watching {clip.source.name}")
@@ -231,17 +239,44 @@ def observe_event(
                 settings=settings,
                 duration_s=clip.proxy.duration_s,
                 seconds_taken=took,
-                observations=seen,
+                observations=[_timed(one, found) for one in seen],
+                moments=found,
                 # what was heard before still holds: the pictures were re-watched, not the sound
                 speech=done.speech if done else [],
                 speech_settings=done.speech_settings if done else None,
                 speech_seconds_taken=done.speech_seconds_taken if done else None,
             )
             save_observations(event_dir, done)
+        elif done is not None:
+            # The pictures were not watched again, but the moments may be new, and a description
+            # kept from an earlier run still deserves to be placed on the moment it describes.
+            timed = [_timed(one, found) for one in done.observations]
+            if done.moments != found or timed != done.observations:
+                done = done.model_copy(update={"moments": found, "observations": timed})
+                save_observations(event_dir, done)
         if speech is not None and done is not None:
             done = _listen(event_dir, clip, done, speech, ears, again, progress)
         out.append(done)
     return out
+
+
+def _moments_of(event_dir: Path, clip: Clip) -> list[Moment]:
+    """Everything in a clip that can be timed exactly, from its sound and from its picture."""
+    found: list[Moment] = []
+    if clip.proxy.audio:
+        found += moments.sound_moments(event_dir / clip.proxy.audio)
+    # a clip whose pictures cannot be read still has its sound
+    with suppress(media.ProxyError, media.MediaToolsError, OSError):
+        found += moments.picture_moments(event_dir / clip.proxy.video)
+    return sorted(found, key=lambda m: m.t_s)
+
+
+def _timed(seen: Observation, found: list[Moment]) -> Observation:
+    """Pull a window's description onto the moment inside it that stands out most."""
+    at = moments.strongest(found, seen.t_start_s, seen.t_end_s)
+    if at is None:
+        return seen
+    return seen.model_copy(update={"at_s": at.t_s, "at_kind": at.kind})
 
 
 def _listen(
@@ -264,8 +299,16 @@ def _listen(
     if progress:
         progress(f"listening to {clip.source.name}")
     heard, took = listen_to_clip(event_dir / clip.proxy.audio, settings, ears)
+    # A word begins with a sound, so the start of an utterance can be placed on the onset that
+    # made it, which is finer than the engine's own idea of where a segment starts.
+    spoken = [
+        said.model_copy(update={"at_s": at.t_s})
+        if (at := moments.snap(said.t_start_s, done.moments, SPEECH_SNAP_S))
+        else said
+        for said in heard
+    ]
     done = done.model_copy(
-        update={"speech": heard, "speech_settings": settings, "speech_seconds_taken": took}
+        update={"speech": spoken, "speech_settings": settings, "speech_seconds_taken": took}
     )
     save_observations(event_dir, done)
     return done

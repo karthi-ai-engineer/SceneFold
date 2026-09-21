@@ -156,6 +156,15 @@ for every word, which is what later phases need to find the moment somebody said
   a missing library makes the run slower, never failed.
 - Watching and listening are cached apart, so adding speech later doesn't re-watch the pictures.
 
+It also finds the **moments** in each clip by arithmetic alone — when the sound suddenly grows (a
+clap, a hit, a cheer starting) and when the picture suddenly changes (a flash, a light cue). A
+model watching ten seconds can say *what* happened but not *when* inside them; an onset can be
+placed to a few hundredths of a second without understanding anything. So each description is
+pulled onto the moment that stands out most inside its window, and each spoken line onto the sound
+that starts it. On the concert clips, 77 of 91 windows ended up with an exact time; a window
+described as "bright blue lights and a crane structure" now points at 18.34 s rather than
+"somewhere in 12–24 s". Where nothing stands out, the coarse time is kept rather than invented.
+
 ```sh
 uv run scenefold observe my-event            # needs `ollama pull qwen3.5:4b` once
 uv sync --extra speech                       # once, if you want speech as well

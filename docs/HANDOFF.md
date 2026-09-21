@@ -52,7 +52,7 @@ git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
 git config core.hooksPath .githooks
 git switch <current phase branch>  # see "Where things stand"; main when none is open
 uv sync
-uv run pytest                      # expect 338 passed, 1 xfailed (the known chorus limit)
+uv run pytest                      # expect 346 passed, 1 xfailed (the known chorus limit)
 node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+)
 ```
 
@@ -443,3 +443,12 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    device is now tried on a moment of silence before being trusted.
 10. A `scenefold view` server left running from an earlier check held the installed command open
     and broke `uv run`; stop stray viewers before syncing dependencies.
+11. **Moments** (`src/scenefold/moments.py`): what can be timed without understanding anything —
+    growth in the sound, sudden change in the picture. Each observation is pulled onto the
+    strongest moment inside its window, each spoken line onto the sound that starts it (within
+    0.25 s). Measured: claps within 50 ms, drawn flashes within 150 ms, and 77 of 91 concert
+    windows gained an exact time. Where nothing stands out the coarse time is kept — the one
+    spoken line on that event stayed where Whisper put it.
+12. A wiring bug worth remembering: the timing was only applied when a clip was *re-watched*, so
+    the first run over cached observations reported 0 of 91 windows timed. Anything computed
+    outside the cached step has to be applied to what is already on disk as well.

@@ -44,6 +44,18 @@ class WatchSettings(BaseModel):
         return self.model_dump_json()
 
 
+class Moment(BaseModel):
+    """Something that can be timed exactly, found by arithmetic rather than by a model.
+
+    A clap, a drum hit, a flash of light: moments.py finds them to a few hundredths of a second,
+    which is far finer than any model's idea of when something happened.
+    """
+
+    t_s: float  # seconds into this clip
+    kind: str  # "sound" (it suddenly grew louder) or "picture" (it suddenly changed)
+    strength: float  # 0 to 1, against the rest of this clip
+
+
 class Observation(BaseModel):
     """What was seen in one window of one clip."""
 
@@ -55,6 +67,10 @@ class Observation(BaseModel):
     # How much the picture was worth looking at over this window, 0 to 1 (quality.py). A blurred,
     # shaken or blown-out window gives a weak account, whatever the model says about it.
     picture_score: float | None = None
+    # The moment inside this window that stands out most, when there is one. The window says what
+    # was looked at; this says when, to a hundredth of a second instead of the model's ten.
+    at_s: float | None = None
+    at_kind: str | None = None
 
 
 class SpeechSettings(BaseModel):
@@ -86,6 +102,7 @@ class Utterance(BaseModel):
     text: str
     words: list[Word] = []
     language: str | None = None
+    at_s: float | None = None  # the sound that starts it, timed exactly (moments.py)
 
 
 class ClipObservations(BaseModel):
@@ -97,6 +114,8 @@ class ClipObservations(BaseModel):
     duration_s: float
     seconds_taken: float  # how long the model took, so the cost of a re-run is known
     observations: list[Observation] = []
+    # Everything in this clip that can be timed exactly, whether or not a model mentioned it.
+    moments: list[Moment] = []
     # What was said, if anyone listened. Kept beside what was seen, cached on its own, because the
     # two are asked of different models at different times.
     speech: list[Utterance] = []

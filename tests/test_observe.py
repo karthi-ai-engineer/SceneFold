@@ -328,3 +328,46 @@ def test_the_real_engine_hears_real_words(tmp_path):
     assert all(u.t_start_s <= u.t_end_s for u in heard)
     assert all(w.t_start_s < w.t_end_s for u in heard for w in u.words)  # every word is timed
     assert took > 0
+
+
+@needs_ffmpeg
+def test_descriptions_are_pulled_onto_the_moment_they_describe(event):
+    """A window says what happened; the sound says when, far more precisely."""
+    seen = observe_event(
+        "watch-me", data_dir=event, settings=SETTINGS, watcher=FakeWatcher(), again=True
+    )
+
+    clip = next(c for c in seen if c.name == "one.mp4")
+    assert clip.moments, "the drawn clips have claps in their sound"
+    assert all(m.kind in ("sound", "picture") for m in clip.moments)
+    assert all(0 <= m.strength <= 1 for m in clip.moments)
+    timed = [o for o in clip.observations if o.at_s is not None]
+    assert timed, "at least one window holds a moment"
+    for one in timed:
+        assert one.t_start_s <= one.at_s < one.t_end_s  # the moment sits inside its own window
+        assert one.at_kind in ("sound", "picture")
+
+
+@needs_ffmpeg
+def test_a_spoken_line_is_placed_on_the_sound_that_starts_it(event):
+    class OneLine:
+        name = "pretend ears"
+
+        def hear(self, wav, settings):
+            return [Utterance(t_start_s=0.15, t_end_s=1.0, text="off by a little", words=[
+                Word(word="off", t_start_s=0.15, t_end_s=0.4)])]  # fmt: skip
+
+    seen = observe_event(
+        "watch-me",
+        data_dir=event,
+        settings=SETTINGS,
+        watcher=FakeWatcher(),
+        speech=SpeechSettings(model="pretend"),
+        transcriber=OneLine(),
+        again=True,
+    )
+
+    clip = next(c for c in seen if c.moments)
+    near = [m for m in clip.moments if abs(m.t_s - 0.15) <= 0.25]
+    said = clip.speech[0]
+    assert said.at_s == (max(near, key=lambda m: m.strength).t_s if near else None)
