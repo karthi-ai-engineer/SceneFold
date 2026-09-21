@@ -67,7 +67,7 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 
 ---
 
-## Where things stand (session 6, 2026-09-20)
+## Where things stand (session 7, 2026-09-21)
 
 | Phase | Status | Where |
 |---|---|---|
@@ -75,8 +75,9 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 | 1 Ingest | Done; checked on 12 real Jiku phone clips; sound now follows file timestamps | `main` |
 | 2 Sync | Done: drift-aware sync, measured on real Jiku clips, ahead of two baselines | `main` (merged from `phase-2-sync`) |
 | 3 Synced viewer | Done, **v0.1.0**: `scenefold view`, every picture within half a frame, the placement checked on the pictures alone, demo event and README GIF | `main` (merged from `phase-3-viewer`) |
-| 4 Quality cut | **Next**, but see step 2 below: placing pictures instead of sound arrival comes first | not started |
-| 5–9 | Not started | |
+| 4 Quality cut | Done: `scenefold cut` scores each second, plans the shots, renders `cut.mp4`, and the viewer plays it | `main` (merged from `phase-4-cut`) |
+| 5 Clip understanding | **Next** | not started |
+| 6–9 | Not started | |
 
 - Results and findings: `docs/ROADMAP.md`, Phase 2 "Progress". In short: on two real Jiku subsets,
   5 of 6 phones agree with the published ground truth within 6.4 ms (174 s overlaps) and 26 ms
@@ -386,3 +387,17 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    at most 0.50, real matches by 0.84-2.71 on drawn clips and 0.60-1.97 on two concerts). The
    distances are unchanged; only the weakest pairs drop out. Lesson: the three OSes in CI are worth
    more than they look — the same code, same seeds, different FFmpeg build.
+9. Phase 4 merged into `main` (CI green on all three systems) and the branch deleted. No tag:
+   v0.1.0 stands until Phase 7. Note for the record: commit 60bf280 on the way through the branch
+   failed on Windows CI (the false alarm in item 8); 367b4c5 fixes it, so only that one commit in
+   the history is red.
+
+### Next steps, in order
+
+1. **Phase 5: what each clip shows.** The roadmap has the plan: a model-agnostic provider, one
+   observation file per clip in clip-local time, each clip read on its own so that disagreements
+   between angles stay real evidence. Decide the provider first (the roadmap's open question about
+   Gemini's free tier using uploaded footage is still open, and the footage here is other people's).
+2. Loose ends carried forward: no progress post for v0.1.0; the Nexus S still disagrees with Jiku's
+   published ground truth by 70-110 ms; other nights are reported but not placed; edited uploads
+   with cuts cannot be placed; `tools/check_viewer.py` needs a quiet machine to trust a red result.
