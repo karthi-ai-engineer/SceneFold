@@ -601,8 +601,16 @@ comes from the picture score (`quality.py`), not from the model's opinion of its
 - Tracklets per clip, by matching each window's sightings to the people already being followed.
 - Cross-camera matching: how alike the descriptions are + time co-occurrence on the synced clock →
   similarity matrix → bipartite matching (`scipy.linear_sum_assignment`). "Unknown" is a valid result.
-- *(not done)* The VLM double-checks ambiguous pairs and explains its choice.
-- *(not done)* Re-run Phase 6 fusion with shared entities.
+- *(tried, dropped)* The VLM double-checks ambiguous pairs and explains its choice. Across three
+  framings of the question the model swung from never rejecting a pair to rejecting nearly all of
+  them. It names the clashing garment reliably — "purple vs brown", "red top vs white shirt" — but
+  cannot turn that into a verdict, and a referee that unreliable makes the decisions worse. If it
+  is tried again: ask only for the clash, decide in code, and measure on far more than ten pairs.
+- *(held back on purpose)* Re-run Phase 6 fusion with shared entities. The machinery would work
+  today, but it would carry identities of unmeasured accuracy into the event store and from there
+  into the story, where every sentence is supposed to be checkable. "Person-03 was there" is a
+  claim the footage cannot yet back. This waits on the hand-labelled event, and that is the whole
+  reason for the wait — not effort.
 
 **Why words before embeddings.** Before building anything, the local model was asked to describe
 people in the footage we have. On the Jiku stage clips it gave genuinely separating descriptions —
