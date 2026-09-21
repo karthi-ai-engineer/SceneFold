@@ -51,6 +51,9 @@ TOGETHER_BONUS = 0.1
 # A description with fewer than this many colour-and-garment pairs describes a type, not a person.
 # "a man in a shirt" matches everybody; "a man in a red shirt" matches somebody.
 NEEDS_PAIRS = 1
+# When one description accounts for this much of an event, it is likelier a stock answer than a
+# person. See Describing for the three events this sits between, and for why it only ever warns.
+STOCK_ANSWER = 0.45
 PEOPLE_NAME = "people.json"
 
 COLOURS = {
@@ -428,9 +431,14 @@ class Describing:
     still come out marked beyond doubt. Nothing downstream can tell the difference, so it is
     measured here and printed, rather than quietly believed.
 
-    Measured on two events. Six angles of a stage: 3.8 people a window, 137 different outfits, the
-    commonest 12% of sightings. Five angles of a stadium: 1.4 people a window, 19 outfits, the
-    commonest 56%. No threshold is set on this, because two events is not enough to set one on.
+    Measured on three events. Six angles of a stage: 3.8 people a window, 137 different outfits,
+    the commonest 12% of sightings. Five angles of a stadium: 1.4 a window, 19 outfits, commonest
+    56%. A drawn event of four phones and six people, where one is on screen throughout: 2.8 a
+    window, 6 outfits, commonest 36% — and that one is honest, which is why the bar sits above it.
+
+    The margin between a real event with few people in it (36%) and an invented crowd (56%) is
+    thin, and three events is not much to set a bar on. So this only ever prints a warning. It
+    rejects nothing, because a wrongly dropped person is as bad as a wrongly matched one.
     """
 
     sightings: int
@@ -443,7 +451,7 @@ class Describing:
     @property
     def worth_doubting(self) -> bool:
         """Whether one description accounts for enough of the event to look like a stock answer."""
-        return self.commonest_share >= 0.3
+        return self.commonest_share >= STOCK_ANSWER
 
 
 def describing(sightings: list[Sighting], windows: int) -> Describing:

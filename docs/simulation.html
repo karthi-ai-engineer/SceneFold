@@ -125,6 +125,11 @@ canvas.chart { display: block; width: 100%; height: auto; }
 .fig-title { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.doubt {
+  margin: 10px 0 0; padding: 9px 13px; border-radius: 8px; font-size: 13px; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--warning); border-left-width: 3px;
+}
+.doubt strong { color: var(--ink); }
 .note { font-size: 13px; color: var(--ink-2); }
 .note b { color: var(--ink); font-weight: 600; }
 .hidden-truth { font-size: 12px; color: var(--muted); }
@@ -196,7 +201,12 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
       <li><span class="chip built"><span class="dot"></span>Distance from the sound</span></li>
       <li><span class="chip built"><span class="dot"></span>Evaluate</span></li>
       <li><span class="chip built"><span class="dot"></span>Synced viewer</span></li>
-      <li><span class="chip next"><span class="dot"></span>Quality cut (next)</span></li>
+      <li><span class="chip built"><span class="dot"></span>Quality cut</span></li>
+      <li><span class="chip built"><span class="dot"></span>Watch each clip</span></li>
+      <li><span class="chip built"><span class="dot"></span>Merge the clips</span></li>
+      <li><span class="chip built"><span class="dot"></span>Cited account</span></li>
+      <li><span class="chip built"><span class="dot"></span>Who is who</span></li>
+      <li><span class="chip next"><span class="dot"></span>Smart cut (next)</span></li>
     </ol>
   </header>
 </div>
@@ -213,6 +223,10 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
     <li><a href="#viewer"><span>8</span>Watch together</a></li>
     <li><a href="#sound"><span>9</span>Sound travels</a></li>
     <li><a href="#cut"><span>10</span>Cut the film</a></li>
+    <li><a href="#observe"><span>11</span>Watch each clip</a></li>
+    <li><a href="#fuse"><span>12</span>Merge the clips</a></li>
+    <li><a href="#story"><span>13</span>Cited account</a></li>
+    <li><a href="#people"><span>14</span>Who is who</a></li>
   </ol>
 </nav>
 
@@ -475,9 +489,130 @@ footer { padding-block: 28px 48px; color: var(--muted); font-size: 13px; display
     </div>
   </section>
 
+  <section class="stage" id="observe">
+    <div class="stage-head">
+      <div class="where">src/scenefold/observe.py · moments.py — <code>scenefold observe</code></div>
+      <h2>11. Watch each clip on its own</h2>
+      <p>A model on this computer looks at one clip at a time, in windows of ten seconds, four frames to a window, and says in one line what it can see. Its sense of time is only as fine as the window it was shown, so <em>when</em> comes from arithmetic instead: sound that suddenly grows, and pictures that suddenly change. Both are measured against the clip they come from and kept only where they rise four robust deviations above the usual run of it, so one firework does not raise the bar for everything else. Each window's line is then pulled onto the moment inside it that stands out most. No clip is ever shown another, which is what makes two angles two witnesses instead of one.</p>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <label class="field">Clip<select id="ob-clip"></select></label>
+        <label class="field">Window <output id="ob-window-out" class="num">10 s</output>
+          <input type="range" id="ob-window" min="4" max="20" step="1" value="10">
+        </label>
+        <label class="field">A peak must stand out <output id="ob-stand-out" class="num">4.0 ×</output>
+          <input type="range" id="ob-stand" min="1" max="8" step="0.5" value="4">
+        </label>
+        <button id="ob-run" class="primary">▶ Watch the clips</button>
+        <span class="note" id="ob-status"></span>
+      </div>
+      <div class="fig-title"><span>One clip on its own clock. The dashed line is the bar the dial sets, median + k × MAD; a dot is a moment kept.</span><span class="legend"><span><i style="background:var(--accent)"></i>sound onset</span><span><i style="background:var(--s4)"></i>picture change</span></span></div>
+      <canvas id="ob-signals" class="chart" width="1080" height="330" aria-label="Sound growth and picture change of one clip, with the peaks kept as moments"></canvas>
+      <div class="fig-title"><span>What the model said about each window, and the moment its line was pulled onto</span></div>
+      <div class="table-wrap"><table class="data" id="ob-table"></table></div>
+    </div>
+  </section>
+
+  <section class="stage" id="fuse">
+    <div class="stage-head">
+      <div class="where">src/scenefold/fuse.py · knowledge.py — <code>scenefold fuse</code></div>
+      <h2>12. Merge what every clip saw</h2>
+      <p>Every clip's moments are moved onto the shared clock, and the ones that land within 0.15 s of each other are taken to be one thing happening, caught by several phones. A clip only ever lends a group its strongest moment, so a phone that shakes twice in a tenth of a second does not become two witnesses. Two phones catching a moment together makes it far likelier that something happened; it still says nothing about <em>what</em>, which is a separate question and one only a reader can settle. Where a clip was filming with as good a picture and caught nothing, that is written down as a disagreement rather than smoothed away.</p>
+    </div>
+    <div class="panel">
+      <div class="formula">t_master = offset_s + heard_late_s + t_local / (1 + drift_ppm / 1e6)</div>
+      <div class="controls">
+        <label class="field">Landing together within <output id="fu-together-out" class="num">0.15 s</output>
+          <input type="range" id="fu-together" min="0.02" max="0.6" step="0.01" value="0.15">
+        </label>
+        <label class="field">A moment counts from <output id="fu-keep-out" class="num">0.25</output>
+          <input type="range" id="fu-keep" min="0" max="0.6" step="0.05" value="0.25">
+        </label>
+        <label class="field inline"><input type="checkbox" id="fu-read" checked>Have a model read the two best accounts of each moment</label>
+        <button id="fu-run" class="primary">▶ Merge the clips</button>
+        <span class="note" id="fu-status"></span>
+      </div>
+      <div id="fu-tiles" class="tiles"></div>
+      <div class="fig-title"><span>Every moment on the shared clock, one lane to a clip, and what was made of them</span><span id="fu-zoom-label" class="num"></span></div>
+      <canvas id="fu-clock" class="chart" width="1080" height="330" aria-label="Each clip's moments on the shared clock and the events gathered from them"></canvas>
+      <div class="fig-title"><span>The events with the most behind them</span></div>
+      <div class="table-wrap"><table class="data" id="fu-table"></table></div>
+      <p class="note" id="fu-kinds"></p>
+    </div>
+  </section>
+
+  <section class="stage" id="story">
+    <div class="stage-head">
+      <div class="where">src/scenefold/story.py — <code>scenefold story</code> · <code>scenefold ask</code></div>
+      <h2>13. Tell what happened, with citations</h2>
+      <p>The account is written from the store and nowhere else. The timeline is cut into as many slices as there are moments to tell and each slice offers its best-attested one, so the account covers the event rather than its noisiest minute. The writer gets that numbered list and nothing else, and ends each sentence with the number it came from. The marks stay where they were written, because "the screens at [3] and [4]" does not survive having them pulled out. Then the citations are checked in code, not by the model: the moment has to exist, and a clip that saw it has to have been filming then. A sentence that fails is dropped and the reason kept, so what was thrown away is as visible as what was left.</p>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <label class="field">Moments to tell <output id="st-most-out" class="num">16</output>
+          <input type="range" id="st-most" min="4" max="24" step="1" value="16">
+        </label>
+        <label class="field">The writer makes one up <output id="st-invent-out" class="num">15%</output>
+          <input type="range" id="st-invent" min="0" max="60" step="5" value="15">
+        </label>
+        <label class="field inline"><input type="checkbox" id="st-stale">A clip has fallen out of the timeline since fusing</label>
+        <button id="st-run" class="primary">▶ Write the account</button>
+        <span class="note" id="st-status"></span>
+      </div>
+      <div id="st-tiles" class="tiles"></div>
+      <div class="fig-title"><span>Every known moment (faint), the slices of the timeline, and the one chosen from each</span></div>
+      <canvas id="st-spread" class="chart" width="1080" height="160" aria-label="Known moments and the ones chosen for the account, one to a slice"></canvas>
+      <div class="two">
+        <div class="panel" style="padding:0;border:0;box-shadow:none;background:none">
+          <div class="fig-title"><span>The account, as a reader sees it</span></div>
+          <ol id="st-lines" class="log"></ol>
+        </div>
+        <div class="panel" style="padding:0;border:0;box-shadow:none;background:none">
+          <div class="fig-title"><span>Dropped, and why</span></div>
+          <ol id="st-dropped" class="log"></ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" id="people">
+    <div class="stage-head">
+      <div class="where">src/scenefold/people.py · identity.py — <code>scenefold people</code></div>
+      <h2>14. Who is who across the angles</h2>
+      <p>Each clip is asked who it can see and what they are wearing: clothing, never faces and never names. Within a clip those sightings are joined window by window, so the red top in one window and the red top in the next are one person, while two people in the same window stay two people however alike they look. Then the clips are matched against each other on the shared clock. A description with no colour-and-garment pair in it ("a person", "dark jeans and a jacket") is dropped before any of that, because it picks out everybody. Nothing is forced: somebody only one phone filmed stays one person seen from one angle, and a match that only just clears the bar is reported as worth checking rather than as fact.</p>
+    </div>
+    <div class="panel">
+      <div class="formula">alike = 0.75 × colour-and-garment pairs shared + 0.25 × bare colours shared, each against the smaller set, + 0.1 × time together</div>
+      <div class="controls">
+        <label class="field">Same person above <output id="pp-bar-out" class="num">0.45</output>
+          <input type="range" id="pp-bar" min="0.2" max="0.9" step="0.05" value="0.45">
+        </label>
+        <label class="field">The second angle
+          <select id="pp-words">
+            <option value="full" selected>words it the same way</option>
+            <option value="half">sees only their top half</option>
+            <option value="dark">films a dark crowd</option>
+            <option value="stock">is too far to see anyone</option>
+          </select>
+        </label>
+        <button id="pp-run" class="primary">▶ Match the angles</button>
+        <span class="note" id="pp-status"></span>
+      </div>
+      <p id="pp-doubt" class="doubt" hidden></p>
+      <div class="fig-title"><span>What each clip said, window by window, and what was worth keeping</span></div>
+      <div id="pp-rows" class="rows"></div>
+      <div class="fig-title"><span>The people each clip followed, on the shared clock. A line between lanes is a match.</span><span class="legend"><span><i style="background:var(--good)"></i>confident, 0.7 and up</span><span><i style="background:var(--warning)"></i>worth checking</span></span></div>
+      <canvas id="pp-tracks" class="chart" width="1080" height="260" aria-label="Each clip's tracklets on the shared clock, with the matches drawn between them"></canvas>
+      <div class="fig-title"><span>Every pair the assignment offered, and what was made of it</span></div>
+      <div class="table-wrap"><table class="data" id="pp-table"></table></div>
+      <div id="pp-tiles" class="tiles"></div>
+    </div>
+  </section>
+
   <footer>
     <div>Imaginary data, invented in your browser. Sound is simulated at 1,000 samples per second (the real code uses 8,000) so every step runs live.</div>
-    <div>Next phase to add here: what each clip shows (Phase 5).</div>
+    <div>Next phase to add here: the smart cut and the release (Phase 9).</div>
   </footer>
 </main>
 <div id="tip" hidden></div>
@@ -1464,6 +1599,1384 @@ STAGES.drift = (() => {
   });
   $("drift-run").addEventListener("click", run);
   return { reset() { if ($("drift-source").value === "pair") lab = null; shownWindows = 0; showLine = false; $("drift-status").textContent = ""; }, render };
+})();
+</script>
+<script>
+/* ================= steps 11-14: what the clips show, and what is made of it ================= */
+const atClock = (seconds) => {
+  const whole = Math.max(0, seconds), minutes = Math.floor(whole / 60);
+  return `${minutes}:${(whole - minutes * 60).toFixed(1).padStart(4, "0")}`;
+};
+
+/* How much later than the nearest phone each clip heard the event: step 9's distance, invented
+   from the phone's own seed so every step below agrees on it. timeline.json carries the real one. */
+function heardLate(phones) {
+  const metres = {};
+  for (const ph of phones) metres[ph.clip_id] = 4 + rng(ph.seed + 3)() * 40;
+  const nearest = Math.min(...Object.values(metres));
+  const out = {};
+  for (const ph of phones) {
+    out[ph.clip_id] = { metres: Math.round(metres[ph.clip_id]), late_s: +((metres[ph.clip_id] - nearest) / 343).toFixed(4) };
+  }
+  return out;
+}
+
+/* ================= 11. watch each clip on its own (observe.py, moments.py) ================= */
+STAGES.observe = (() => {
+  const canvas = $("ob-signals");
+  const HOP_S = 0.01, MIN_GAP_S = 0.15, MOST = 400;       // moments.py
+  const FRAMES_PER_WINDOW = 4, FPS = 30, SMOOTH_S = 2.0;  // WatchSettings, picture_offset.py
+  const SOUND = "sound", PICTURE = "picture";
+  /* What is really in front of the phones. Each clip words it its own way, and no clip is ever
+     shown another clip's words: that is what makes two angles two witnesses. */
+  const HAPPENING = [
+    { until: 22, said: ["a dim room, people standing about with phones held up",
+      "a dark room and a few raised phones, nobody on the stage",
+      "low light, heads and shoulders, one phone screen glowing"] },
+    { until: 48, said: ["the stage lights come up and three people walk on",
+      "lights on the stage, figures walking to their places",
+      "a lit stage, people taking up instruments"] },
+    { until: 78, said: ["the band is playing and the crowd has its hands up",
+      "hands in the air in front of a lit stage",
+      "people jumping, the stage lit white"] },
+    { until: 104, said: ["the lights drop to red and the room goes still",
+      "a red wash over the stage, arms down",
+      "red light, the crowd barely moving"] },
+    { until: 128, said: ["confetti falls over the front of the crowd",
+      "small bright pieces coming down in front of the stage",
+      "paper falling through the light above the crowd"] },
+    { until: 1e9, said: ["the stage goes dark and people begin to turn away",
+      "the lights go out, the room lit by phones again",
+      "a dark stage, the crowd starting to move"] },
+  ];
+  const ELSEWHERE = ["a kitchen with people talking over a table",
+    "glasses and plates on a table, two people beside it",
+    "a bright room, somebody laughing at the camera"];
+  /* The model wrong in the two ways it is measurably bad at: counting, and reading text. */
+  const SLIPS = ["about two hundred people in the room", "a sign reading TONIGHT over the stage"];
+  let signals = null, running = false;
+
+  /* ---- moments.py ---- */
+  /* The usual run of a signal: a median, and a median absolute deviation, which a few loud events
+     cannot inflate the way a standard deviation can. */
+  function bar(values, standsOut) {
+    const middle = median(values);
+    let spread = median(values.map((v) => Math.abs(v - middle))) * 1.4826;
+    if (spread <= 0) {
+      const mean = values.reduce((s, v) => s + v, 0) / (values.length || 1);
+      spread = Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / (values.length || 1)) || 1;
+    }
+    return { middle, spread, height: middle + standsOut * spread };
+  }
+
+  function peaks(signal, kind, standsOut) {
+    const { values, times } = signal;
+    if (!values.length || !values.some((v) => v > 0)) return [];
+    const height = bar(values, standsOut).height;
+    const apart = times.length > 1 ? Math.max(1, Math.round(MIN_GAP_S / (times[1] - times[0]))) : 1;
+    const tall = [];
+    for (let i = 1; i < values.length - 1; i++) {
+      if (values[i] >= height && values[i] > values[i - 1] && values[i] >= values[i + 1]) tall.push(i);
+    }
+    const kept = [];
+    for (const i of tall.sort((p, q) => values[q] - values[p])) { // strongest first, as find_peaks does
+      if (kept.every((k) => Math.abs(k - i) >= apart)) kept.push(i);
+    }
+    if (!kept.length) return [];
+    const strongest = Math.max(...kept.map((i) => values[i])) || 1;
+    return kept
+      .map((i) => ({ t_s: +times[i].toFixed(3), kind, strength: +(values[i] / strongest).toFixed(4), value: values[i] }))
+      .sort((a, b) => b.strength - a.strength)
+      .slice(0, MOST)
+      .sort((a, b) => a.t_s - b.t_s);
+  }
+
+  /* moments.sound_moments: how fast a short-time spectrum grows, summed across it. Growth only,
+     which is what makes a clap stand out from steady noise of the same volume. */
+  function soundFlux(audio) {
+    const hop = Math.max(1, Math.round(HOP_S * RATE)), width = hop * 4;
+    const size = nextPow2(width), half = size >> 1;
+    const re = new Float64Array(size), im = new Float64Array(size);
+    const values = [], times = [];
+    let before = null;
+    for (let first = 0; first + width <= audio.length; first += hop) {
+      re.fill(0); im.fill(0);
+      for (let i = 0; i < width; i++) re[i] = audio[first + i];
+      fft(re, im, false);
+      const loud = new Float64Array(half);
+      for (let k = 0; k < half; k++) loud[k] = Math.hypot(re[k], im[k]);
+      if (before) {
+        let grew = 0;
+        for (let k = 0; k < half; k++) grew += Math.max(0, loud[k] - before[k]);
+        values.push(grew);
+        times.push((first + width / 2) / RATE);
+      }
+      before = loud;
+    }
+    return { values, times };
+  }
+
+  /* Invented frame brightness: the camera's own exposure wandering, the light cues everybody in
+     the room saw, and a few this phone alone caught (a passing torch, somebody's flash). */
+  function brightnessOf(ph) {
+    const r = rng(ph.seed * 17 + 3), n = Math.max(8, Math.round(ph.seconds * FPS)), out = new Float64Array(n);
+    let level = 90 + r() * 40, aim = level;
+    for (let i = 0; i < n; i++) {
+      if (i % 45 === 0) aim = 60 + r() * 80;
+      level += (aim - level) * 0.03 + (r() - 0.5) * 1.5;
+      out[i] = level;
+    }
+    const cues = [];
+    if (ph.related) {
+      for (const t of CLAPS.concat([22, 48, 78, 104, 128])) {
+        // A quarter of the cues happen outside this phone's frame, and the rest register more or
+        // less strongly. That is what a disagreement between two angles usually is.
+        if (r() < 0.25) continue;
+        cues.push({ t: (t - ph.start) * (1 + ph.drift_ppm * 1e-6), size: 35 + r() * 50 });
+      }
+    }
+    for (let k = 0; k < 4; k++) cues.push({ t: r() * ph.seconds, size: 35 + r() * 50 });
+    for (const cue of cues) {
+      const at = Math.round(cue.t * FPS);
+      if (at < 1 || at >= n - 4) continue;
+      for (let i = 0; i < 4; i++) out[at + i] += cue.size * Math.exp(-i / 1.5);
+    }
+    return out;
+  }
+
+  /* moments.picture_moments: brightness with its slow drifts taken out, then how fast it changes. */
+  function pictureChange(bright) {
+    const width = Math.max(3, Math.round(SMOOTH_S * FPS) | 1), wing = width >> 1, last = bright.length - 1;
+    const quick = [];
+    for (let i = 0; i < bright.length; i++) {
+      let sum = 0;
+      for (let k = -wing; k <= wing; k++) sum += bright[Math.max(0, Math.min(last, i + k))];
+      quick.push(bright[i] - sum / width);
+    }
+    const mean = quick.reduce((s, v) => s + v, 0) / (quick.length || 1);
+    const sd = Math.sqrt(quick.reduce((s, v) => s + (v - mean) ** 2, 0) / (quick.length || 1)) || 1;
+    const values = [], times = [];
+    for (let i = 1; i < quick.length; i++) { values.push(Math.abs(quick[i] - quick[i - 1]) / sd); times.push(i / FPS); }
+    return { values, times };
+  }
+
+  /* How good the picture is, second by second. quality.py measures sharpness, steadiness and
+     exposure; here it is the same slow wander step 10 uses. */
+  function looks(ph) {
+    const r = rng(ph.seed * 31 + 7), out = [];
+    let value = 0.3 + 0.5 * r();
+    for (let t = 0; t < Math.ceil(ph.seconds); t++) {
+      value = Math.max(0.05, Math.min(0.98, value + (r() - 0.5) * 0.22));
+      out.push(+value.toFixed(4));
+    }
+    return out;
+  }
+  const scoreOver = (scores, t0, t1) => {
+    const piece = scores.slice(Math.floor(t0), Math.max(Math.floor(t0) + 1, Math.floor(t1)));
+    return piece.length ? +(piece.reduce((s, v) => s + v, 0) / piece.length).toFixed(4) : null;
+  };
+
+  function lineFor(ph, index, tMid, number) {
+    if (!ph.related) return { summary: ELSEWHERE[(index + number) % ELSEWHERE.length], about: -1, slip: false };
+    const real = ph.start + tMid / (1 + ph.drift_ppm * 1e-6);
+    const about = Math.max(0, HAPPENING.findIndex((h) => real < h.until));
+    if (rng(ph.seed * 13 + number * 101 + 5)() < 0.07) return { summary: SLIPS[number % SLIPS.length], about, slip: true };
+    const said = HAPPENING[about].said;
+    return { summary: said[index % said.length], about, slip: false };
+  }
+
+  /* observe.watch_clip: frames every window_s / frames_per_window seconds, taken four at a time,
+     and observe._timed pulls each window's line onto the moment inside it that stands out most. */
+  function windowsOf(ph, index, moments, windowS) {
+    const every = windowS / FRAMES_PER_WINDOW;
+    const frames = Math.max(2, Math.floor(ph.seconds / every));
+    const scores = looks(ph), out = [];
+    for (let first = 0; first < frames; first += FRAMES_PER_WINDOW) {
+      const count = Math.min(FRAMES_PER_WINDOW, frames - first);
+      const tStart = first * every, tEnd = Math.min(ph.seconds, tStart + count * every);
+      const said = lineFor(ph, index, (tStart + tEnd) / 2, out.length);
+      const inside = moments.filter((m) => m.t_s >= tStart && m.t_s < tEnd);
+      const at = inside.length ? inside.reduce((best, m) => (m.strength > best.strength ? m : best)) : null;
+      out.push({
+        t_start_s: +tStart.toFixed(3), t_end_s: +tEnd.toFixed(3), frames: count,
+        summary: said.summary, about: said.about, slip: said.slip,
+        at_s: at ? at.t_s : null, at_kind: at ? at.kind : null,
+        picture_score: scoreOver(scores, tStart, tEnd),
+      });
+    }
+    return out;
+  }
+
+  function apply() {
+    if (!signals) return;
+    const standsOut = +$("ob-stand").value, windowS = +$("ob-window").value;
+    S.watched = signals.map((clip) => {
+      const moments = [
+        ...(clip.sound ? peaks(clip.sound, SOUND, standsOut) : []),
+        ...peaks(clip.picture, PICTURE, standsOut),
+      ].sort((a, b) => a.t_s - b.t_s);
+      return { ...clip, moments, windows: windowsOf(clip.ph, clip.index, moments, windowS) };
+    });
+    S.fused = null; S.told = null;
+  }
+
+  async function ensure(progress) {
+    if (!signals) {
+      signals = [];
+      for (const [index, ph] of S.event.phones.entries()) {
+        if (progress) progress(`watching ${ph.name} on its own`);
+        await nextFrame();
+        signals.push({ ph, index, sound: ph.audio ? soundFlux(ph.audio) : null, picture: pictureChange(brightnessOf(ph)) });
+      }
+    }
+    if (!S.watched) apply();
+    return S.watched;
+  }
+
+  const current = () => (S.watched || []).find((c) => c.ph.key === $("ob-clip").value) || (S.watched || [])[0];
+
+  function fillClips() {
+    const list = S.event ? S.event.phones : [], keep = $("ob-clip").value;
+    $("ob-clip").innerHTML = list.map((ph) => `<option value="${ph.key}">${esc(ph.name)}</option>`).join("");
+    $("ob-clip").value = list.some((ph) => ph.key === keep) ? keep : list[0]?.key;
+  }
+
+  function draw() {
+    const g = setup(canvas);
+    const clip = current();
+    if (!clip) {
+      g.fontPx(13); g.fillStyle = css("--muted"); g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("Press “Watch the clips” to look at each one on its own.", canvas._w / 2, canvas._h / 2);
+      return;
+    }
+    const standsOut = +$("ob-stand").value, seconds = clip.ph.seconds;
+    const left = 86, right = canvas._w - 16;
+    const X = (t) => left + (t / seconds) * (right - left);
+    const rows = [
+      { label: "sound", title: "how fast the spectrum grows", signal: clip.sound, kind: SOUND, colour: css("--accent"), t: 18, b: 122 },
+      { label: "picture", title: "how fast the brightness changes", signal: clip.picture, kind: PICTURE, colour: css("--s4"), t: 146, b: 240 },
+    ];
+    for (const row of rows) {
+      g.fontPx(12, 500); g.fillStyle = css("--ink"); g.textAlign = "left"; g.textBaseline = "top";
+      g.fillText(row.label, 8, row.t);
+      g.fontPx(10); g.fillStyle = css("--muted");
+      const wrapped = row.title.split(" ").reduce((lines, word) => {
+        const at = lines.length - 1;
+        if (lines[at].length + word.length > 12) lines.push(word); else lines[at] = `${lines[at]} ${word}`.trim();
+        return lines;
+      }, [""]);
+      wrapped.forEach((line, i) => g.fillText(line, 8, row.t + 16 + i * 12));
+      g.strokeStyle = css("--axis");
+      g.beginPath(); g.moveTo(left, row.b); g.lineTo(right, row.b); g.stroke();
+      if (!row.signal) {
+        g.fontPx(11); g.fillStyle = css("--muted"); g.textAlign = "left"; g.textBaseline = "middle";
+        g.fillText("no sound on this clip: only its picture can be timed", left + 8, (row.t + row.b) / 2);
+        continue;
+      }
+      const { values } = row.signal;
+      // Drawn against the 99.5th value rather than the highest, or one firework flattens the rest
+      // of the signal against the axis. The bar itself is worked out from all of it.
+      const ranked = [...values].sort((a, b) => a - b);
+      const top = ranked[Math.min(ranked.length - 1, Math.floor(0.995 * ranked.length))] * 1.1 || 1;
+      const Y = (v) => row.b - (Math.min(v, top) / top) * (row.b - row.t - 6);
+      g.fillStyle = row.colour; g.globalAlpha = 0.5;
+      const columns = Math.max(1, Math.round(right - left));
+      for (let c = 0; c < columns; c++) {
+        const i0 = Math.floor((c / columns) * values.length), i1 = Math.floor(((c + 1) / columns) * values.length);
+        let peak = 0;
+        for (let i = i0; i < Math.max(i0 + 1, i1); i++) peak = Math.max(peak, values[i] || 0);
+        const y = Y(peak);
+        g.fillRect(left + c, y, 1, row.b - y);
+      }
+      g.globalAlpha = 1;
+      const height = bar(values, standsOut).height;
+      g.setLineDash([4, 4]); g.strokeStyle = css("--ink-2");
+      g.beginPath(); g.moveTo(left, Y(height)); g.lineTo(right, Y(height)); g.stroke();
+      g.setLineDash([]);
+      const kept = clip.moments.filter((m) => m.kind === row.kind);
+      g.fillStyle = row.colour;
+      for (const m of kept) { g.beginPath(); g.arc(X(m.t_s), Y(m.value), 3, 0, 7); g.fill(); }
+      g.fontPx(10, 500); g.fillStyle = css("--ink-2"); g.textAlign = "left"; g.textBaseline = "top";
+      g.fillText(`${kept.length} over the bar`, 8, row.t + 18 + wrapped.length * 12);
+    }
+    const strip = { t: 258, b: 302 };
+    g.fontPx(12, 500); g.fillStyle = css("--ink"); g.textAlign = "left"; g.textBaseline = "top";
+    g.fillText("windows", 8, strip.t);
+    g.fontPx(10); g.fillStyle = css("--muted");
+    g.fillText(`${clip.windows.length} × ${$("ob-window").value} s`, 8, strip.t + 16);
+    clip.windows.forEach((w, i) => {
+      const x0 = X(w.t_start_s), x1 = X(w.t_end_s), width = Math.max(1, x1 - x0 - 1);
+      g.fillStyle = i % 2 ? css("--accent-wash") : css("--raised");
+      g.fillRect(x0, strip.t, width, strip.b - strip.t);
+      g.strokeStyle = css("--border");
+      g.strokeRect(x0, strip.t, width, strip.b - strip.t);
+      g.fillStyle = css("--muted"); g.fontPx(10, 400, true); g.textAlign = "left"; g.textBaseline = "top";
+      if (width > 22) g.fillText(`w${i + 1}`, x0 + 4, strip.t + 5);
+      if (w.at_s === null) return;
+      const colour = w.at_kind === SOUND ? css("--accent") : css("--s4");
+      g.strokeStyle = colour; g.setLineDash([2, 3]); g.globalAlpha = 0.7;
+      g.beginPath(); g.moveTo(X(w.at_s), 18); g.lineTo(X(w.at_s), strip.b - 10); g.stroke();
+      g.setLineDash([]); g.globalAlpha = 1;
+      g.fillStyle = colour;
+      g.beginPath(); g.arc(X(w.at_s), strip.b - 9, 3.5, 0, 7); g.fill();
+    });
+    g.fillStyle = css("--muted"); g.fontPx(11); g.textAlign = "center"; g.textBaseline = "top";
+    for (const t of niceTicks(0, seconds, 8)) g.fillText(`${t} s`, X(t), strip.b + 7);
+  }
+
+  function table() {
+    const clip = current();
+    if (!clip) { $("ob-table").innerHTML = ""; return; }
+    const rows = clip.windows.map((w, i) => `<tr>
+      <td class="num">w${i + 1}</td>
+      <td class="num">${fmt(w.t_start_s, 1)}–${fmt(w.t_end_s, 1)} s</td>
+      <td>${esc(w.summary)}${w.slip ? ' <span class="pill bad">the model slipped</span>' : ""}</td>
+      <td class="num">${w.at_s === null ? "—" : `${fmt(w.at_s, 2)} s`}</td>
+      <td>${w.at_kind ? esc(w.at_kind) : "nothing stood out in this window"}</td>
+      <td class="num">${fmt(w.picture_score, 2)}</td></tr>`).join("");
+    $("ob-table").innerHTML = `<thead><tr><th>Window</th><th>When</th><th>What the model said</th>
+      <th>Pulled onto</th><th>Which kind</th><th>Picture</th></tr></thead><tbody>${rows}</tbody>`;
+  }
+
+  function status() {
+    if (!S.watched) return;
+    const windows = S.watched.reduce((s, c) => s + c.windows.length, 0);
+    const found = S.watched.flatMap((c) => c.moments);
+    const empty = S.watched.reduce((s, c) => s + c.windows.filter((w) => w.at_s === null).length, 0);
+    $("ob-status").textContent = `${S.watched.length} clips watched one at a time · ${windows} windows · `
+      + `${found.length} moments (${found.filter((m) => m.kind === SOUND).length} sound, `
+      + `${found.filter((m) => m.kind === PICTURE).length} picture) · ${empty} window${empty === 1 ? "" : "s"} with nothing to pull onto`;
+  }
+
+  async function run() {
+    if (running) return;
+    running = true;
+    const button = $("ob-run");
+    setBusy(button, true, "watching…");
+    S.watched = null;
+    await ensure((text) => { $("ob-status").textContent = text; });
+    setBusy(button, false, "▶ Watch the clips");
+    running = false;
+    render();
+  }
+
+  function render() { fillClips(); draw(); table(); status(); }
+
+  $("ob-run").addEventListener("click", run);
+  $("ob-clip").addEventListener("change", () => { draw(); table(); });
+  for (const [id, out, suffix] of [["ob-window", "ob-window-out", " s"], ["ob-stand", "ob-stand-out", " ×"]]) {
+    $(id).addEventListener("input", () => {
+      $(out).textContent = (id === "ob-stand" ? (+$(id).value).toFixed(1) : $(id).value) + suffix;
+      if (S.watched) { apply(); render(); }
+    });
+  }
+  return {
+    reset() { signals = null; S.watched = null; S.fused = null; S.told = null; $("ob-status").textContent = ""; render(); },
+    render, ensure,
+  };
+})();
+
+/* ================= 12. merge what every clip saw (fuse.py, knowledge.py) ================= */
+STAGES.fuse = (() => {
+  const canvas = $("fu-clock");
+  const DESCRIBES_S = 8.0, CLEARLY_BETTER = 0.12, EDGE_S = 0.001;
+  const NOT_IN_VIEW = "not in view", READ_DIFFERENTLY = "different interpretation", MODEL_ERROR = "suspected model error";
+  const UNRESOLVED = "unresolved";
+  let running = false;
+
+  const masterTime = (p, t) => p.offset_s + p.heard_late_s + t / (1 + p.drift_ppm * 1e-6);
+  const localTime = (p, t) => (t - p.offset_s - p.heard_late_s) * (1 + p.drift_ppm * 1e-6);
+  const recordingAt = (p, t) => {
+    const local = localTime(p, t);
+    return local >= -EDGE_S && local < p.duration_s + EDGE_S;
+  };
+
+  function places(solution, watched) {
+    const inside = watched.filter((c) => c.ph.clip_id in solution.offsets);
+    if (!inside.length) return {};
+    const late = heardLate(inside.map((c) => c.ph));
+    const placed = {};
+    for (const clip of inside) {
+      const id = clip.ph.clip_id;
+      placed[id] = {
+        ph: clip.ph, windows: clip.windows, moments: clip.moments,
+        offset_s: solution.offsets[id], heard_late_s: late[id].late_s, metres: late[id].metres,
+        drift_ppm: solution.drift_ppm[id] || 0, duration_s: clip.ph.seconds,
+      };
+    }
+    return placed;
+  }
+
+  const onTheClock = (p, worthKeeping) => p.moments
+    .filter((m) => m.strength >= worthKeeping)
+    .map((m) => ({ clip_id: p.ph.clip_id, t_master_s: +masterTime(p, m.t_s).toFixed(4), t_local_s: m.t_s, kind: m.kind, strength: m.strength }));
+
+  /* fuse.gather: a clip only ever lends a group its strongest moment, so a phone that shakes twice
+     in a tenth of a second does not look like two witnesses. */
+  function gather(moments, togetherS) {
+    const groups = [];
+    for (const moment of [...moments].sort((a, b) => a.t_master_s - b.t_master_s)) {
+      const last = groups[groups.length - 1];
+      if (last && moment.t_master_s - last[0].t_master_s <= togetherS) {
+        const same = last.find((m) => m.clip_id === moment.clip_id);
+        if (!same) last.push(moment);
+        else if (moment.strength > same.strength) last[last.indexOf(same)] = moment;
+      } else groups.push([moment]);
+    }
+    return groups;
+  }
+
+  function describing(windows, tLocal) {
+    const covering = windows.find((w) => w.t_start_s <= tLocal && tLocal < w.t_end_s);
+    if (covering) return covering;
+    const near = windows.filter((w) => Math.min(Math.abs(w.t_start_s - tLocal), Math.abs(w.t_end_s - tLocal)) <= DESCRIBES_S);
+    return near.length ? near.reduce((best, w) => (Math.abs(w.t_start_s - tLocal) < Math.abs(best.t_start_s - tLocal) ? w : best)) : null;
+  }
+
+  /* fuse._disagreement: one clip catching what another, filming the same instant with as good a
+     picture, did not. Settled by which camera could see best, never by counting cameras. */
+  function disagreement(event, views) {
+    const saw = new Set(event.evidence.map((e) => e.clip_id));
+    const missed = Object.keys(views).filter((clip) => !saw.has(clip));
+    if (!missed.length || event.witnesses < 2) return null;
+    const witnessed = [...saw].map((clip) => views[clip]).filter((score) => score !== null && score !== undefined).sort((a, b) => a - b);
+    if (!witnessed.length) return null;
+    const blind = missed.filter((clip) => (views[clip] || 0) >= witnessed[0]);
+    if (!blind.length) return null;
+    const explanation = `${saw.size} of ${event.recording} clips filming at this moment caught it; `
+      + `${blind.length} with as good a view did not`;
+    const scored = Object.entries(views).filter(([, score]) => score !== null && score !== undefined);
+    if (scored.length < 2) return { kind: NOT_IN_VIEW, explanation, resolved_by: null, reason: UNRESOLVED };
+    const best = scored.reduce((a, b) => (b[1] > a[1] ? b : a));
+    const others = scored.filter(([clip]) => clip !== best[0]).map(([, score]) => score).sort((a, b) => b - a);
+    if (best[1] - others[0] < CLEARLY_BETTER) {
+      return { kind: NOT_IN_VIEW, explanation, resolved_by: null,
+        reason: `no camera had a clearly better view (${fmt(best[1], 2)} against ${fmt(others[0], 2)})` };
+    }
+    if (!saw.has(best[0])) {
+      return { kind: NOT_IN_VIEW, explanation, resolved_by: null,
+        reason: `the clip with the best view (${fmt(best[1], 2)}) is one that did not catch it` };
+    }
+    return { kind: NOT_IN_VIEW, explanation, resolved_by: best[0],
+      reason: `its picture was the better one at that moment (${fmt(best[1], 2)} against ${fmt(others[0], 2)})` };
+  }
+
+  function whoToBelieve(views) {
+    const scored = Object.entries(views).filter(([, score]) => score !== null && score !== undefined);
+    if (scored.length < 2) return [null, UNRESOLVED];
+    const best = scored.reduce((a, b) => (b[1] > a[1] ? b : a));
+    const second = Math.max(...scored.filter(([clip]) => clip !== best[0]).map(([, score]) => score));
+    if (best[1] - second < CLEARLY_BETTER) {
+      return [null, `no camera had a clearly better view (${fmt(best[1], 2)} against ${fmt(second, 2)})`];
+    }
+    return [best[0], `its picture was the better one (${fmt(best[1], 2)} against ${fmt(second, 2)})`];
+  }
+
+  /* A stand-in for judge.py's small model: here it can see which window each account came from,
+     so it knows when two clips are telling one thing and when they are not. */
+  function read(first, second) {
+    if (first.slip || second.slip) return { fit: false, kind: MODEL_ERROR, why: "one account counts a crowd the other never mentions" };
+    if (first.about !== second.about) return { fit: false, kind: READ_DIFFERENTLY, why: "one has the stage lit and the other has it dark" };
+    return { fit: true, kind: null, why: "" };
+  }
+
+  /* fuse.read_accounts: only the two best-placed accounts of each event are read, and the same
+     pair of sentences only once however many moments they cover. */
+  function readAccounts(events) {
+    const seen = new Map();
+    let found = 0;
+    for (const event of events) {
+      const said = event.evidence.filter((e) => e.summary);
+      if (said.length < 2) continue;
+      const best = [...said].sort((a, b) => (b.picture_score || 0) - (a.picture_score || 0)).slice(0, 2);
+      if (best[0].summary.trim() === best[1].summary.trim()) continue;
+      const key = `${best[0].summary}||${best[1].summary}`;
+      if (!seen.has(key)) seen.set(key, read(best[0], best[1]));
+      const reading = seen.get(key);
+      if (reading.fit) continue;
+      const [who, why] = whoToBelieve(Object.fromEntries(event.evidence.map((e) => [e.clip_id, e.picture_score])));
+      event.conflicts.push({
+        kind: reading.kind,
+        explanation: `${reading.why} (A: ${best[0].clip_id.slice(0, 8)}, B: ${best[1].clip_id.slice(0, 8)})`,
+        resolved_by: who, reason: why,
+      });
+      found += 1;
+    }
+    return found;
+  }
+
+  function eventsFrom(groups, placed) {
+    const events = [];
+    groups.forEach((group, number) => {
+      const when = +(group.reduce((s, m) => s + m.t_master_s, 0) / group.length).toFixed(4);
+      const evidence = group.map((moment) => {
+        const said = describing(placed[moment.clip_id].windows, moment.t_local_s);
+        return { clip_id: moment.clip_id, t_local_s: moment.t_local_s, kind: moment.kind, strength: moment.strength,
+          summary: said ? said.summary : null, picture_score: said ? said.picture_score : null,
+          about: said ? said.about : -1, slip: said ? said.slip : false };
+      });
+      const views = {}; // every clip filming then, and how good its picture was
+      for (const [id, p] of Object.entries(placed)) {
+        if (!recordingAt(p, when)) continue;
+        const near = describing(p.windows, localTime(p, when));
+        views[id] = near ? near.picture_score : null;
+      }
+      const kinds = new Set(group.map((m) => m.kind));
+      const told = evidence.filter((e) => e.summary);
+      const event = {
+        event_id: `imaginary-${S.event.seed}-${String(number).padStart(5, "0")}`,
+        t_master_s: when, kind: kinds.size > 1 ? "both" : [...kinds][0],
+        strength: +Math.max(...group.map((m) => m.strength)).toFixed(4),
+        witnesses: group.length, recording: Object.keys(views).length,
+        summary: told.length ? told.reduce((a, b) => ((b.picture_score || 0) > (a.picture_score || 0) ? b : a)).summary : null,
+        evidence, views, conflicts: [],
+      };
+      const clash = disagreement(event, views);
+      if (clash) event.conflicts.push(clash);
+      events.push(event);
+    });
+    return events;
+  }
+
+  async function ensure(progress) {
+    if (S.fused) return S.fused;
+    const watched = await STAGES.observe.ensure(progress);
+    if (progress) progress("putting every clip's moments on the shared clock");
+    const solution = await STAGES.solve.ensure();
+    const placed = places(solution, watched);
+    const togetherS = +$("fu-together").value, worthKeeping = +$("fu-keep").value;
+    let moments = [];
+    for (const p of Object.values(placed)) {
+      p.onClock = onTheClock(p, worthKeeping);
+      moments = moments.concat(p.onClock);
+    }
+    const events = eventsFrom(gather(moments, togetherS), placed);
+    const read = $("fu-read").checked ? readAccounts(events) : 0;
+    S.fused = { placed, events, togetherS, worthKeeping, read };
+    S.told = null;
+    return S.fused;
+  }
+
+  function draw() {
+    const g = setup(canvas);
+    const fused = S.fused;
+    if (!fused || !fused.events.length) {
+      g.fontPx(13); g.fillStyle = css("--muted"); g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("Press “Merge the clips” to put every clip's moments on one clock.", canvas._w / 2, canvas._h / 2);
+      $("fu-zoom-label").textContent = "";
+      return;
+    }
+    const clips = Object.values(fused.placed);
+    const span = Math.max(...clips.map((p) => p.offset_s + p.heard_late_s + p.duration_s), 1);
+    const box = { l: 154, r: canvas._w - 16, t: 14, b: 164 };
+    const X = (t) => box.l + (t / span) * (box.r - box.l);
+    const laneH = (box.b - box.t) / clips.length;
+    clips.forEach((p, i) => {
+      const y = box.t + i * laneH;
+      g.fillStyle = css("--ink"); g.fontPx(12, 500); g.textAlign = "right"; g.textBaseline = "middle";
+      g.fillText(p.ph.name, box.l - 10, y + laneH / 2 - 7);
+      g.fillStyle = css("--muted"); g.fontPx(10, 400, true);
+      g.fillText(`${p.metres} m · +${fmt(p.heard_late_s * 1000, 0)} ms`, box.l - 10, y + laneH / 2 + 7);
+      const x0 = X(p.offset_s + p.heard_late_s), x1 = X(p.offset_s + p.heard_late_s + p.duration_s);
+      g.fillStyle = colorOf(p.ph); g.globalAlpha = 0.10;
+      g.fillRect(x0, y + 3, Math.max(1, x1 - x0), laneH - 8);
+      g.globalAlpha = 1;
+      g.strokeStyle = colorOf(p.ph);
+      g.beginPath();
+      for (const m of p.onClock) {
+        const bottom = y + laneH - 6;
+        g.moveTo(X(m.t_master_s), bottom);
+        g.lineTo(X(m.t_master_s), bottom - (laneH - 14) * (0.25 + 0.75 * m.strength));
+      }
+      g.stroke();
+    });
+    const ev = { t: 180, b: 224 };
+    const most = Math.max(...fused.events.map((e) => e.witnesses));
+    g.fillStyle = css("--ink"); g.fontPx(12, 500); g.textAlign = "right"; g.textBaseline = "middle";
+    g.fillText("events", box.l - 10, (ev.t + ev.b) / 2 - 7);
+    g.fillStyle = css("--muted"); g.fontPx(10, 400, true);
+    g.fillText("tall = more witnesses", box.l - 10, (ev.t + ev.b) / 2 + 7);
+    for (const e of fused.events) {
+      const h = (ev.b - ev.t) * (e.witnesses / most);
+      g.fillStyle = e.witnesses > 1 ? css("--accent") : css("--axis");
+      g.fillRect(X(e.t_master_s), ev.b - h, 1.4, h);
+      if (e.conflicts.length) { g.fillStyle = css("--critical"); g.fillRect(X(e.t_master_s), ev.b + 3, 1.6, 4); }
+    }
+    g.fillStyle = css("--muted"); g.fontPx(11); g.textAlign = "center"; g.textBaseline = "top";
+    for (const t of niceTicks(0, span, 9)) g.fillText(`${t} s`, X(t), ev.b + 12);
+
+    const pick = fused.events.reduce((best, e) =>
+      (e.witnesses > best.witnesses || (e.witnesses === best.witnesses && e.strength > best.strength) ? e : best));
+    const zoom = { l: box.l, r: box.r, t: 268, b: 318 }, half = Math.max(0.08, fused.togetherS * 3);
+    const Z = (t) => zoom.l + ((t - pick.t_master_s + half) / (2 * half)) * (zoom.r - zoom.l);
+    const first = Math.min(...pick.evidence.map((e) => masterTime(fused.placed[e.clip_id], e.t_local_s)));
+    g.fillStyle = css("--ink"); g.fontPx(12, 500); g.textAlign = "right"; g.textBaseline = "middle";
+    g.fillText(`zoom, ±${fmt(half * 1000, 0)} ms`, zoom.l - 10, (zoom.t + zoom.b) / 2 - 7);
+    g.fillStyle = css("--muted"); g.fontPx(10, 400, true);
+    g.fillText(`gathered within ${fmt(fused.togetherS * 1000, 0)} ms`, zoom.l - 10, (zoom.t + zoom.b) / 2 + 7);
+    g.fillStyle = css("--band");
+    g.fillRect(Z(first), zoom.t, Math.max(2, Z(first + fused.togetherS) - Z(first)), zoom.b - zoom.t);
+    pick.evidence.forEach((e, i) => {
+      const p = fused.placed[e.clip_id], x = Z(masterTime(p, e.t_local_s));
+      g.strokeStyle = colorOf(p.ph); g.lineWidth = 3;
+      g.beginPath(); g.moveTo(x, zoom.t + 4); g.lineTo(x, zoom.b - 4); g.stroke();
+      g.lineWidth = 1;
+      g.fillStyle = css("--ink-2"); g.fontPx(10, 500); g.textAlign = "left"; g.textBaseline = "top";
+      g.fillText(`${p.ph.key} · ${e.kind}`, x + 5, zoom.t + 2 + (i % 4) * 12);
+    });
+    g.setLineDash([3, 3]); g.strokeStyle = css("--ink-2");
+    g.beginPath(); g.moveTo(Z(pick.t_master_s), zoom.t); g.lineTo(Z(pick.t_master_s), zoom.b); g.stroke();
+    g.setLineDash([]);
+    const quiet = Object.keys(pick.views).filter((id) => !pick.evidence.some((e) => e.clip_id === id));
+    $("fu-zoom-label").textContent = `zoomed on ${atClock(pick.t_master_s)} · ${pick.witnesses} of ${pick.recording} clips filming caught it`
+      + (quiet.length ? ` · ${quiet.map((id) => fused.placed[id].ph.key).join(", ")} caught nothing` : "");
+  }
+
+  function tiles() {
+    const fused = S.fused;
+    if (!fused) { $("fu-tiles").innerHTML = ""; $("fu-table").innerHTML = ""; $("fu-kinds").innerHTML = ""; return; }
+    const events = fused.events;
+    const corroborated = events.filter((e) => e.witnesses > 1).length;
+    const evidence = events.reduce((s, e) => s + e.evidence.length, 0);
+    const conflicts = events.reduce((s, e) => s + e.conflicts.length, 0);
+    const unresolved = events.reduce((s, e) => s + e.conflicts.filter((c) => !c.resolved_by).length, 0);
+    $("fu-tiles").innerHTML = `
+      <div class="tile"><span class="l">Events</span><span class="v">${events.length}</span><span class="s">from ${evidence} pieces of evidence</span></div>
+      <div class="tile"><span class="l">Two clips or more</span><span class="v">${corroborated}</span><span class="s">${events.length - corroborated} on one clip's word</span></div>
+      <div class="tile"><span class="l">Disagreements</span><span class="v">${conflicts}</span><span class="s">${fused.read} of them from reading the accounts</span></div>
+      <div class="tile"><span class="l">Left unresolved</span><span class="v">${unresolved}</span><span class="s">no camera clearly saw better</span></div>`;
+    const shown = [...events].sort((a, b) => b.witnesses - a.witnesses || b.strength - a.strength).slice(0, 14);
+    $("fu-table").innerHTML = `<thead><tr><th>When</th><th>Kind</th><th>Caught by</th><th>Filming</th>
+      <th>What the best-placed clip showed</th><th>Where they disagree</th></tr></thead><tbody>${shown.map((e) => `<tr>
+      <td class="num">${atClock(e.t_master_s)}</td>
+      <td>${esc(e.kind)}</td>
+      <td>${e.evidence.map((x) => `<span class="swatch" style="background:${colorOf(fused.placed[x.clip_id].ph)}"></span>`).join("")}${e.witnesses}${e.witnesses > 1 ? "" : ' <span class="pill">one clip</span>'}</td>
+      <td class="num">${e.recording}</td>
+      <td>${esc(e.summary || "nothing was described here")}</td>
+      <td>${e.conflicts.length ? e.conflicts.map((c) => `<b>${esc(c.kind)}</b> — ${esc(c.explanation.split(" (")[0])}; ${c.resolved_by ? `taken from ${esc(fused.placed[c.resolved_by].ph.name)}, ${esc(c.reason)}` : `<span class="pill warning">unresolved</span> ${esc(c.reason)}`}`).join("<br>") : "—"}</td>
+      </tr>`).join("")}</tbody>`;
+    $("fu-kinds").innerHTML = `The store keeps six kinds of disagreement. <b>not in view</b> is the only one arithmetic
+      can raise on its own: a clip that was filming, with a picture as good as the weakest witness's, and caught nothing.
+      <b>different interpretation</b>, <b>occluded</b> and <b>suspected model error</b> come from having the two
+      best-placed accounts read against each other, which needs a model reading words. <b>audio/visual delay</b> is
+      measured by sync (step 9) rather than guessed at. <b>unresolved</b> is what a disagreement stays when no camera
+      had a clearly better view: ${unresolved} of the ${conflicts} here end that way, and that is the honest answer
+      rather than a failure to decide.`;
+  }
+
+  async function run() {
+    if (running) return;
+    running = true;
+    const button = $("fu-run");
+    setBusy(button, true, "merging…");
+    S.fused = null;
+    await ensure((text) => { $("fu-status").textContent = text; });
+    $("fu-status").textContent = S.fused.events.length ? "" : "No clip was placed on the timeline, so there is nothing to merge.";
+    setBusy(button, false, "▶ Merge the clips");
+    running = false;
+    render();
+  }
+
+  function render() { draw(); tiles(); }
+
+  $("fu-run").addEventListener("click", run);
+  $("fu-read").addEventListener("change", () => { if (S.fused) run(); });
+  for (const [id, out, digits, suffix] of [["fu-together", "fu-together-out", 2, " s"], ["fu-keep", "fu-keep-out", 2, ""]]) {
+    $(id).addEventListener("input", () => {
+      $(out).textContent = (+$(id).value).toFixed(digits) + suffix;
+      if (S.fused) run();
+    });
+  }
+  return { reset() { S.fused = null; $("fu-status").textContent = ""; render(); }, render, ensure };
+})();
+
+/* ================= 13. tell what happened, with citations (story.py) ================= */
+STAGES.story = (() => {
+  const canvas = $("st-spread");
+  const MOST_MARKS = 4; // citations shown in one sentence; a model will happily attach twenty
+  const CITE = /\[(\d+)\]/g;
+  let running = false;
+
+  /* story._worth: witnesses first, then how much the moment stood out, and a described moment
+     always beats an undescribed one. Packed into one number so it can be compared at a glance. */
+  const worth = (e) => (e.evidence.some((x) => x.summary) ? 1e6 : 0) + e.witnesses * 1e3 + e.strength;
+
+  /* story.worth_telling: the timeline cut into as many slices as there are moments to tell, each
+     slice offering its best. Picking the strongest few would bunch them where the lights flashed. */
+  function worthTelling(events, most) {
+    const told = events.filter((e) => e.evidence.length);
+    if (told.length <= most) return [...told].sort((a, b) => a.t_master_s - b.t_master_s);
+    const first = told[0].t_master_s, last = told[told.length - 1].t_master_s;
+    const span = last - first || 1;
+    const best = new Map();
+    for (const event of told) {
+      const slice = Math.min(most - 1, Math.floor(((event.t_master_s - first) / span) * most));
+      const standing = best.get(slice);
+      if (!standing || worth(event) > worth(standing)) best.set(slice, event);
+    }
+    return [...best.values()].sort((a, b) => a.t_master_s - b.t_master_s);
+  }
+
+  /* story._tidy: a sentence with the punctuation its removed marks left behind taken out. */
+  function tidy(text) {
+    return String(text || "").replace(/\s+/g, " ").trim()
+      .replace(/(?:\s*,)+/g, ",")
+      .replace(/,\s*and\s*(?=[.;:]|$)/g, "")
+      .replace(/,\s*(?=[.;:]|$)/g, "")
+      .replace(/\s+([,.;:])/g, "$1")
+      .trim().replace(/^,|,$/g, "").trim();
+  }
+
+  /* story._renumber: the marks stay in the words, numbered from one within the sentence itself. */
+  function renumber(sentence, chosen) {
+    const order = [];
+    const clean = sentence.replace(CITE, (whole, digits) => {
+      const number = +digits;
+      if (!(number >= 1 && number <= chosen.length)) return ""; // a mark pointing at nothing goes
+      const event = chosen[number - 1];
+      const at = order.indexOf(event);
+      if (at >= 0) return `[${at + 1}]`;
+      if (order.length >= MOST_MARKS) return "";
+      order.push(event);
+      return `[${order.length}]`;
+    });
+    return [tidy(clean), order];
+  }
+
+  const up = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
+  /* story._dispute: how the clips disagreed, in words the account can repeat without misstating
+     it. The type on its own ("not in view") reads as jargon and gets paraphrased into something
+     that is not quite true, so what actually happened is said instead. */
+  function dispute(event) {
+    if (!event.conflicts.length) return "";
+    const conflict = event.conflicts[0];
+    if (conflict.kind === "not in view") return ", though another camera with as good a view caught nothing here";
+    return `, though the clips disagree: ${conflict.explanation.split(" (")[0]}`;
+  }
+
+  function sentenceFor(event, number) {
+    const said = (event.summary || "nothing was described here").replace(/\.\s*$/, "");
+    const tail = event.witnesses > 1 ? `, caught by ${event.witnesses} clips at once` : ", on one clip's word alone";
+    return `${up(said)}${tail}${dispute(event)} [${number}].`;
+  }
+
+  /* The writer stands in for the model: it mostly repeats what the moments say, and now and then
+     it makes something up. Nothing here decides what survives; the check below does. */
+  function write(chosen, invent, seed) {
+    const r = rng(seed), out = [];
+    chosen.forEach((event, index) => {
+      out.push(sentenceFor(event, index + 1));
+      if (r() < invent) {
+        const roll = r();
+        if (roll < 0.45) {
+          out.push(`${up((event.summary || "the room").replace(/\.\s*$/, ""))} again a little later [${chosen.length + 1 + Math.floor(r() * 3)}].`);
+        } else if (roll < 0.8) {
+          out.push("The room was full of people who had come a long way for this.");
+        } else {
+          const marks = [...Array(6)].map((_, k) => `[${((index + k) % chosen.length) + 1}]`).join(" ");
+          out.push(`The same thing shows up in every angle at once ${marks}.`);
+        }
+      }
+    });
+    return out;
+  }
+
+  /* story.check_citations: the moment has to be in the store, and a clip that saw it has to have
+     been filming then. `spans` is what the store says each clip covers on the shared clock. */
+  function checkCitations(lines, known, spans) {
+    const wrong = [];
+    for (const line of lines) {
+      for (const [at, id] of line.cites.entries()) {
+        const event = known.get(id);
+        if (!event) { wrong.push(`${line.text} — cites ${id}, which is not in the store`); continue; }
+        const covered = event.evidence.some((e) => {
+          const span = spans[e.clip_id];
+          return span && span[0] - 1 <= event.t_master_s && event.t_master_s <= span[1] + 1;
+        });
+        if (!covered) wrong.push(`${line.text} — cites ${id}, which no clip was filming at ${atClock(line.cite_times_s[at])}`);
+      }
+    }
+    return wrong;
+  }
+
+  function tell(fused, most, invent, stale) {
+    const events = fused.events;
+    const chosen = worthTelling(events, most);
+    const known = new Map(events.map((e) => [e.event_id, e]));
+    const lines = [], dropped = [];
+    for (const sentence of write(chosen, invent, S.event.seed + most * 31)) {
+      if (!/\[\d+\]/.test(sentence)) {
+        const bare = tidy(sentence);
+        if (bare) dropped.push(`${bare} — points at no moment`);
+        continue;
+      }
+      const [clean, behind] = renumber(sentence, chosen);
+      if (!clean) continue;
+      if (!behind.length) { dropped.push(`${clean} — points at a moment that does not exist`); continue; }
+      const clips = [...new Set(behind.flatMap((e) => e.evidence.map((x) => x.clip_id)))].sort();
+      if (!clips.length) { dropped.push(`${clean} — no clip stands behind it`); continue; }
+      const before = lines[lines.length - 1];
+      if (before && before.text === clean) { // one sentence written twice is one sentence, better cited
+        before.cites = before.cites.concat(behind.map((e) => e.event_id));
+        before.cite_times_s = before.cite_times_s.concat(behind.map((e) => e.t_master_s));
+        before.clips = [...new Set(before.clips.concat(clips))].sort();
+        before.disputed = before.disputed || behind.some((e) => e.conflicts.length);
+        continue;
+      }
+      lines.push({
+        t_master_s: behind[0].t_master_s, text: clean,
+        cites: behind.map((e) => e.event_id), cite_times_s: behind.map((e) => e.t_master_s),
+        clips, disputed: behind.some((e) => e.conflicts.length),
+      });
+    }
+    // What the store says each clip covers. Re-syncing after fusing can drop a clip from the
+    // timeline, and then the account is left citing footage the store no longer stands behind.
+    const spans = {};
+    for (const [id, p] of Object.entries(fused.placed)) spans[id] = [p.offset_s, p.offset_s + p.duration_s];
+    let gone = null;
+    if (stale) {
+      const alone = {};
+      for (const event of chosen) {
+        const only = new Set(event.evidence.map((e) => e.clip_id));
+        if (only.size === 1) alone[[...only][0]] = (alone[[...only][0]] || 0) + 1;
+      }
+      const ids = Object.keys(spans);
+      gone = ids.reduce((best, id) => ((alone[id] || 0) > (alone[best] || 0) ? id : best), ids[0]);
+      delete spans[gone];
+    }
+    const wrong = checkCitations(lines, known, spans);
+    const bad = new Set(wrong.map((reason) => reason.split(" — ")[0]));
+    const names = {};
+    for (const [id, p] of Object.entries(fused.placed)) names[id] = { name: p.ph.name, colour: `var(${p.ph.color})` };
+    return {
+      known: events, chosen, most, gone, names,
+      lines: lines.filter((line) => !bad.has(line.text)),
+      dropped: dropped.concat(wrong),
+    };
+  }
+
+  function draw() {
+    const g = setup(canvas);
+    const told = S.told;
+    if (!told || !told.known.length) {
+      g.fontPx(13); g.fillStyle = css("--muted"); g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("Press “Write the account” to choose the moments and cite them.", canvas._w / 2, canvas._h / 2);
+      return;
+    }
+    const box = { l: 16, r: canvas._w - 16, t: 26, b: 116 };
+    const first = told.known[0].t_master_s, last = told.known[told.known.length - 1].t_master_s;
+    const span = last - first || 1;
+    const X = (t) => box.l + ((t - first) / span) * (box.r - box.l);
+    g.strokeStyle = css("--grid");
+    for (let k = 0; k <= told.most; k++) {
+      const x = X(first + (span * k) / told.most);
+      g.beginPath(); g.moveTo(x, box.t); g.lineTo(x, box.b); g.stroke();
+    }
+    g.strokeStyle = css("--axis"); g.globalAlpha = 0.5;
+    g.beginPath();
+    for (const e of told.known) { g.moveTo(X(e.t_master_s), box.b); g.lineTo(X(e.t_master_s), box.b - 12); }
+    g.stroke();
+    g.globalAlpha = 1;
+    told.chosen.forEach((e, index) => {
+      const x = X(e.t_master_s), h = 18 + 40 * (e.witnesses > 1 ? 1 : 0.4);
+      g.strokeStyle = e.conflicts.length ? css("--critical") : css("--accent"); g.lineWidth = 2;
+      g.beginPath(); g.moveTo(x, box.b); g.lineTo(x, box.b - h); g.stroke();
+      g.lineWidth = 1;
+      g.fillStyle = css("--ink"); g.fontPx(10, 500, true); g.textAlign = "center"; g.textBaseline = "bottom";
+      g.fillText(`[${index + 1}]`, x, box.b - h - 3);
+    });
+    g.strokeStyle = css("--axis");
+    g.beginPath(); g.moveTo(box.l, box.b); g.lineTo(box.r, box.b); g.stroke();
+    g.fillStyle = css("--muted"); g.fontPx(11); g.textAlign = "center"; g.textBaseline = "top";
+    for (const t of niceTicks(first, last, 8)) g.fillText(atClock(t), X(t), box.b + 6);
+    g.textAlign = "left"; g.textBaseline = "top";
+    g.fillText(`${told.most} slices of the timeline, each offering its best-attested moment`, box.l, 6);
+  }
+
+  function lists() {
+    const told = S.told;
+    if (!told) { $("st-lines").innerHTML = ""; $("st-dropped").innerHTML = ""; $("st-tiles").innerHTML = ""; return; }
+    $("st-tiles").innerHTML = `
+      <div class="tile"><span class="l">Moments known</span><span class="v">${told.known.length}</span><span class="s">in the store</span></div>
+      <div class="tile"><span class="l">Handed to the writer</span><span class="v">${told.chosen.length}</span><span class="s">one from each slice, at most 16</span></div>
+      <div class="tile"><span class="l">Sentences kept</span><span class="v">${told.lines.length}</span><span class="s">every one cites footage</span></div>
+      <div class="tile"><span class="l">Dropped in code</span><span class="v">${told.dropped.length}</span><span class="s">not by the model</span></div>`;
+    $("st-lines").innerHTML = told.lines.map((line) => `<li>
+      ${esc(line.text)}
+      <div class="note"><span class="num">${line.cites.map((id, at) => `[${at + 1}] ${atClock(line.cite_times_s[at])}`).join(" · ")}</span>
+      — ${line.clips.map((id) => `<span class="swatch" style="background:${told.names[id].colour}"></span>${esc(told.names[id].name)}`).join(", ")}
+      ${line.disputed ? '<span class="pill warning">the clips disagree here</span>' : ""}</div></li>`).join("")
+      || '<li class="note">Nothing survived the check.</li>';
+    $("st-dropped").innerHTML = told.dropped.map((reason) => `<li>${esc(reason)}</li>`).join("")
+      || '<li class="note">Nothing was dropped: every sentence the writer wrote points at footage.</li>';
+  }
+
+  async function run() {
+    if (running) return;
+    running = true;
+    const button = $("st-run");
+    setBusy(button, true, "writing…");
+    const fused = await STAGES.fuse.ensure((text) => { $("st-status").textContent = text; });
+    if (!fused.events.length) {
+      S.told = null;
+      $("st-status").textContent = "Nothing has been merged yet, so there is nothing to tell.";
+    } else {
+      S.told = tell(fused, +$("st-most").value, +$("st-invent").value / 100, $("st-stale").checked);
+      $("st-status").textContent = S.told.gone
+        ? `${fused.placed[S.told.gone].ph.name} is no longer on the timeline, so what rested on it alone goes.`
+        : "";
+    }
+    setBusy(button, false, "▶ Write the account");
+    running = false;
+    render();
+  }
+
+  function render() { draw(); lists(); }
+
+  $("st-run").addEventListener("click", run);
+  $("st-stale").addEventListener("change", () => { if (S.told) run(); });
+  for (const [id, out, suffix] of [["st-most", "st-most-out", ""], ["st-invent", "st-invent-out", "%"]]) {
+    $(id).addEventListener("input", () => {
+      $(out).textContent = $(id).value + suffix;
+      if (S.told) run();
+    });
+  }
+  return { reset() { S.told = null; $("st-status").textContent = ""; render(); }, render };
+})();
+
+/* ================= 14. who is who across the angles (people.py, identity.py) ================= */
+STAGES.people = (() => {
+  const canvas = $("pp-tracks");
+  const SAME_PERSON = 0.45, SURE = 0.7, APART_S = 90, TOGETHER_BONUS = 0.1, NEEDS_PAIRS = 1, NEAR = 3;
+  const WINDOW_S = 10; // PeopleSettings.window_s: one look every ten seconds
+  const COLOURS = new Set(("red blue green black white yellow orange purple pink brown grey gray maroon navy beige "
+    + "cream gold silver tan teal olive burgundy turquoise lavender khaki denim striped floral plaid checked "
+    + "patterned camouflage neon pastel").split(" "));
+  // "dark" and "light" only say something next to a real colour, so they never count as one.
+  const SHADES = new Set("dark light pale bright deep".split(" "));
+  const GARMENTS = new Set(("shirt t-shirt tshirt tee top blouse dress skirt trousers pants jeans shorts jacket coat "
+    + "hoodie sweater sweatshirt jumper cardigan vest suit tie hat cap beanie scarf uniform jersey gown leggings "
+    + "overalls poncho robe kimono saree sari kurta lehenga").split(" "));
+  // Said about a garment rather than a colour, but they separate people just as well.
+  const CUTS = new Set("sleeveless long-sleeve long-sleeved short-sleeve short-sleeved strapless".split(" "));
+  /* What the model says when nobody in the frame is big enough to describe. It does not say so:
+     it produces one plausible concert-goer, over and over, and the repeats match each other across
+     angles perfectly well. Measured on five angles of a stadium at night, 56% of all sightings
+     were this one invented person. Nothing after this step can tell that from a real result, so
+     identity.py measures how varied an event's descriptions are and says when one has taken over. */
+  const STOCK = "a red sleeveless top and black trousers";
+  const STOCK_ANSWER = 0.45; // identity.STOCK_ANSWER: above this, one description has taken over
+
+  /* Who is really at the event. Each phone words the same person in its own way, which is all
+     identity.py ever gets: no faces, no names, only clothes. */
+  const CAST = [
+    { key: "red", from: 0.06, to: 0.54, gap: [0.28, 0.35], clips: [0, 1], doing: "singing at the front",
+      said: ["a red sleeveless top and blue jeans",
+        { full: "a red sleeveless top and blue jeans", half: "a red top", dark: "dark clothing" }] },
+    { key: "green", from: 0.18, to: 0.86, clips: [0, 1], doing: "standing by the speakers",
+      said: ["a green jacket and black jeans",
+        { full: "a green jacket and blue jeans", half: "a green jacket and dark blue jeans", dark: "a person" }] },
+    { key: "white", from: 0.30, to: 0.90, clips: [1, 2, 3], doing: "dancing near the front",
+      said: ["a white shirt and a navy cap",
+        { full: "a white shirt and a navy cap", half: "a white shirt", dark: "dark clothes" },
+        { full: "a white shirt and a navy cap", half: "a white long-sleeved shirt", dark: "a person" }] },
+    { key: "grey", from: 0.08, to: 0.94, clips: [0], doing: "filming with a phone held up",
+      said: ["a grey hoodie and a black cap"] },
+    { key: "black-one", from: 0.36, to: 0.80, clips: [2], doing: "standing still with arms folded",
+      said: ["a black t-shirt and grey shorts"] },
+    { key: "black-two", from: 0.36, to: 0.80, clips: [2], doing: "talking to the person beside them",
+      said: ["a black t-shirt and grey shorts"] },
+    { key: "nobody", from: 0.12, to: 0.92, clips: [0, 1, 2], doing: "somewhere in the crowd",
+      said: ["dark jeans and a jacket", { full: "a person", half: "a person", dark: "a person" },
+        { full: "dark clothing", half: "dark clothing", dark: "dark clothing" }] },
+  ];
+  let running = false;
+
+  /* ---- identity.py: what a description picks out ---- */
+  function pairsOf(text) {
+    const words = String(text).toLowerCase().match(/[a-z]+(?:-[a-z]+)*/g) || [];
+    const found = new Set();
+    words.forEach((word, index) => {
+      if (!GARMENTS.has(word)) return;
+      for (const before of words.slice(Math.max(0, index - NEAR), index)) {
+        if (COLOURS.has(before) || CUTS.has(before)) found.add(`${before} ${word}`);
+        else if (SHADES.has(before)) {
+          found.add(`${COLOURS.has(words[index - 1]) ? `${before}-${words[index - 1]}` : before} ${word}`);
+        }
+      }
+    });
+    return found;
+  }
+  const coloursOf = (text) => new Set((String(text).toLowerCase().match(/[a-z]+(?:-[a-z]+)*/g) || []).filter((w) => COLOURS.has(w)));
+  /* Against the smaller set, not the union: one angle sees a person's whole outfit and another
+     only their top half, and they should still be one person. */
+  function overlap(mine, theirs) {
+    if (!mine.size || !theirs.size) return 0;
+    let shared = 0;
+    for (const one of mine) if (theirs.has(one)) shared += 1;
+    return shared / Math.min(mine.size, theirs.size);
+  }
+  function lookAlike(one, other) {
+    const mine = pairsOf(one), theirs = pairsOf(other);
+    if (!mine.size || !theirs.size) return 0;
+    return +(0.75 * overlap(mine, theirs) + 0.25 * overlap(coloursOf(one), coloursOf(other))).toFixed(4);
+  }
+  /* "dark jeans" is half the people at any event after sunset, so a shade with no colour behind it
+     does not count as having described somebody. "dark blue jeans" does. */
+  const telling = (text) => [...pairsOf(text)].filter((pair) => !SHADES.has(pair.split(" ")[0]));
+  const describesSomebody = (wearing) => telling(wearing).length >= NEEDS_PAIRS;
+
+  /* scipy's linear_sum_assignment, on sets small enough to weigh every arrangement at once. Greedy
+     matching would give two angles' best-looking pair to each other and leave a third unmatched. */
+  function assign(scores) {
+    const rows = scores.length, columns = rows ? scores[0].length : 0;
+    if (!rows || !columns) return [];
+    const most = Math.min(rows, columns);
+    if (rows > 8 || columns > 8) { // far more than any window holds; fall back rather than hang
+      const taken = new Set(), out = [];
+      for (let row = 0; row < rows; row++) {
+        let best = -1;
+        for (let column = 0; column < columns; column++) {
+          if (!taken.has(column) && (best < 0 || scores[row][column] > scores[row][best])) best = column;
+        }
+        if (best >= 0) { taken.add(best); out.push([row, best]); }
+      }
+      return out;
+    }
+    const pick = new Array(rows).fill(-1), used = new Array(columns).fill(false);
+    let bestSum = -Infinity, best = null;
+    const walk = (row, made, sum) => {
+      if (made + Math.min(rows - row, columns - made) < most) return;
+      if (row === rows) { if (sum > bestSum) { bestSum = sum; best = [...pick]; } return; }
+      for (let column = 0; column < columns; column++) {
+        if (used[column]) continue;
+        used[column] = true; pick[row] = column;
+        walk(row + 1, made + 1, sum + scores[row][column]);
+        used[column] = false; pick[row] = -1;
+      }
+      walk(row + 1, made, sum); // this row goes unassigned, which only a taller matrix allows
+    };
+    walk(0, 0, 0);
+    return best ? best.map((column, row) => [row, column]).filter(([, column]) => column >= 0) : [];
+  }
+
+  /* identity.link_clip: window by window, because two people in the same frame are two people
+     however alike they look. */
+  function linkClip(clipId, seen, placement, samePerson) {
+    const usable = seen.filter((one) => describesSomebody(one.wearing));
+    if (!usable.length) return [];
+    const byWindow = new Map();
+    for (const one of usable) {
+      const key = one.t_start_s.toFixed(3);
+      if (!byWindow.has(key)) byWindow.set(key, []);
+      byWindow.get(key).push(one);
+    }
+    const open = [];
+    for (const key of [...byWindow.keys()].sort((a, b) => +a - +b)) {
+      const window = byWindow.get(key);
+      const alike = open.map((track) => window.map((one) =>
+        one.t_start_s - track.t_end_s <= APART_S ? lookAlike(track.wearing, one.wearing) : 0));
+      const taken = new Set();
+      if (open.length) {
+        for (const [row, column] of assign(alike)) {
+          if (alike[row][column] < samePerson) continue;
+          const track = open[row], one = window[column];
+          track.t_end_s = Math.max(track.t_end_s, one.t_end_s);
+          track.sightings += 1;
+          track.said.push(one.wearing);
+          if (one.wearing.length > track.wearing.length) track.wearing = one.wearing; // keep the fullest
+          if (one.doing && !track.doing) track.doing = one.doing;
+          taken.add(column);
+        }
+      }
+      window.forEach((one, index) => {
+        if (taken.has(index)) return;
+        open.push({ t_start_s: one.t_start_s, t_end_s: one.t_end_s, wearing: one.wearing, doing: one.doing,
+          sightings: 1, said: [one.wearing], who: one.who });
+      });
+    }
+    return open.sort((a, b) => a.t_start_s - b.t_start_s).map((track, number) => ({
+      tracklet_id: `${clipId.slice(0, 8)}-${number + 1}`, clip_id: clipId,
+      t_start_s: track.t_start_s, t_end_s: track.t_end_s,
+      t_master_start_s: +master(placement, track.t_start_s).toFixed(3),
+      t_master_end_s: +master(placement, track.t_end_s).toFixed(3),
+      wearing: track.wearing, doing: track.doing, sightings: track.sightings, said: track.said, who: track.who,
+    }));
+  }
+
+  const master = (p, t) => p.offset_s + p.heard_late_s + t / (1 + p.drift_ppm * 1e-6);
+
+  /* How much of the two angles' time overlaps on the shared clock, from 0 to 1. */
+  function together(one, other) {
+    const start = Math.max(one.t_master_start_s, other.t_master_start_s);
+    const end = Math.min(one.t_master_end_s, other.t_master_end_s);
+    if (end <= start) return 0;
+    const shorter = Math.min(one.t_master_end_s - one.t_master_start_s, other.t_master_end_s - other.t_master_start_s);
+    return shorter > 0 ? Math.min(1, (end - start) / shorter) : 1;
+  }
+
+  /* identity.match_clips: at most one each, and often none. Being visible in both angles at once
+     adds a little; it can never make a match on its own. */
+  function matchClips(mine, theirs, samePerson) {
+    if (!mine.length || !theirs.length) return [];
+    const scores = mine.map((one) => theirs.map((other) => {
+      const alike = lookAlike(one.wearing, other.wearing);
+      return alike <= 0 ? 0 : Math.min(1, alike + TOGETHER_BONUS * together(one, other));
+    }));
+    return assign(scores).map(([row, column]) => ({
+      one: mine[row], other: theirs[column],
+      alike: lookAlike(mine[row].wearing, theirs[column].wearing),
+      bonus: +(TOGETHER_BONUS * together(mine[row], theirs[column])).toFixed(4),
+      score: +scores[row][column].toFixed(4),
+      kept: scores[row][column] >= samePerson,
+    }));
+  }
+
+  /* identity.find_people: a tracklet matched to nothing is still a person, which is the common
+     case at a real event and not a failure to report. */
+  function findPeople(tracklets, matches) {
+    const same = new Map(tracklets.map((t) => [t.tracklet_id, t.tracklet_id]));
+    const root = (key) => { while (same.get(key) !== key) { same.set(key, same.get(same.get(key))); key = same.get(key); } return key; };
+    for (const match of matches.filter((m) => m.kept)) {
+      const mine = root(match.one.tracklet_id), theirs = root(match.other.tracklet_id);
+      if (mine !== theirs) same.set(theirs, mine);
+    }
+    const grouped = new Map();
+    for (const track of tracklets) {
+      const key = root(track.tracklet_id);
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(track);
+    }
+    return [...grouped.values()]
+      .sort((a, b) => new Set(b.map((t) => t.clip_id)).size - new Set(a.map((t) => t.clip_id)).size)
+      .map((group, number) => {
+        const inside = new Set(group.map((t) => t.tracklet_id));
+        const joins = matches.filter((m) => m.kept && inside.has(m.one.tracklet_id) && inside.has(m.other.tracklet_id));
+        return {
+          person_id: `person-${String(number + 1).padStart(2, "0")}`,
+          wearing: group.reduce((a, b) => (b.wearing.length > a.wearing.length ? b : a)).wearing,
+          tracklets: group.sort((a, b) => a.t_master_start_s - b.t_master_start_s),
+          clips: [...new Set(group.map((t) => t.clip_id))].sort(),
+          joins, sure: joins.every((m) => m.score >= SURE),
+        };
+      });
+  }
+
+  /* people.see_people: one look every ten seconds, and a description nobody could be picked out
+     by is worse than no description. */
+  function sightings(clips) {
+    const wording = $("pp-words").value;
+    const out = new Map(clips.map((ph) => [ph.clip_id, []]));
+    for (const person of CAST) {
+      person.clips.forEach((which, position) => {
+        const ph = clips[which];
+        if (!ph) return;
+        const said = person.said[position];
+        // "stock" is not a wording of this person at all: the phone cannot make anybody out and
+        // names the same invented one every time, for everybody it points at.
+        const wearing = wording === "stock" && position > 0
+          ? STOCK
+          : typeof said === "string" ? said : said[wording === "stock" ? "full" : wording];
+        for (let t = 0; t + WINDOW_S <= ph.seconds; t += WINDOW_S) {
+          const at = (ph.start + (t + WINDOW_S / 2) / (1 + ph.drift_ppm * 1e-6)) / EVENT_S;
+          if (at < person.from || at > person.to) continue;
+          if (person.gap && at >= person.gap[0] && at <= person.gap[1]) continue;
+          out.get(ph.clip_id).push({ t_start_s: +t.toFixed(3), t_end_s: +Math.min(ph.seconds, t + WINDOW_S).toFixed(3),
+            wearing, doing: person.doing, who: person.key });
+        }
+      });
+    }
+    for (const list of out.values()) list.sort((a, b) => a.t_start_s - b.t_start_s || a.who.localeCompare(b.who));
+    return out;
+  }
+
+  /* identity.describing: where people are big enough to describe, the model names many outfits
+     and no one of them accounts for much. Where they are not, one takes over. */
+  function describing(said) {
+    const all = [...said.values()].flat();
+    const kept = all.filter((one) => describesSomebody(one.wearing));
+    const outfits = new Map();
+    for (const one of kept) {
+      const key = [...telling(one.wearing)].sort().join("|");
+      outfits.set(key, (outfits.get(key) || []).concat(one.wearing));
+    }
+    const commonest = [...outfits.values()].sort((a, b) => b.length - a.length)[0] || [];
+    const windows = [...said.values()].reduce((n, list) => n + new Set(list.map((o) => o.t_start_s)).size, 0);
+    const share = kept.length ? commonest.length / kept.length : 0;
+    return {
+      sightings: all.length, usable: kept.length, outfits: outfits.size,
+      perLook: windows ? all.length / windows : 0,
+      share, commonest: commonest[0] || "", worthDoubting: share >= STOCK_ANSWER,
+    };
+  }
+
+  async function run() {
+    if (running) return;
+    running = true;
+    const button = $("pp-run");
+    setBusy(button, true, "matching…");
+    const solution = await STAGES.solve.ensure();
+    const clips = S.event.phones.filter((ph) => ph.related && ph.clip_id in solution.offsets);
+    if (!clips.length) {
+      S.found = null;
+      $("pp-status").textContent = "No clip was placed on the timeline, so there is nobody to match.";
+    } else {
+      const samePerson = +$("pp-bar").value;
+      const late = heardLate(clips);
+      const placements = Object.fromEntries(clips.map((ph) => [ph.clip_id, {
+        offset_s: solution.offsets[ph.clip_id], heard_late_s: late[ph.clip_id].late_s,
+        drift_ppm: solution.drift_ppm[ph.clip_id] || 0,
+      }]));
+      const said = sightings(clips);
+      const tracklets = [], perClip = [];
+      for (const ph of clips) {
+        const seen = said.get(ph.clip_id);
+        const kept = linkClip(ph.clip_id, seen, placements[ph.clip_id], samePerson);
+        perClip.push({ ph, seen, kept });
+        tracklets.push(...kept);
+      }
+      const matches = [];
+      for (let first = 0; first < clips.length; first++) {
+        for (let second = first + 1; second < clips.length; second++) {
+          matches.push(...matchClips(
+            tracklets.filter((t) => t.clip_id === clips[first].clip_id),
+            tracklets.filter((t) => t.clip_id === clips[second].clip_id),
+            samePerson));
+        }
+      }
+      const told = describing(said);
+      S.found = { clips, perClip, tracklets, matches, people: findPeople(tracklets, matches), samePerson, told };
+      const dark = $("pp-words").value === "dark";
+      const across = S.found.people.filter((p) => p.clips.length > 1);
+      // Two people in one clip wearing the same thing are never merged: the assignment gives each
+      // window's sightings at most one open person each.
+      const twins = S.found.perClip.some(({ kept }) => kept.some((one, i) => kept.some((other, k) => k !== i && other.wearing === one.wearing)));
+      $("pp-status").textContent = dark
+        ? "The second angle can only manage “a person” and “dark clothing”, which picks out everybody, so nothing is matched. That is the honest outcome, not a failure."
+        : `${across.length} of ${S.found.people.length} people were found in more than one angle; the rest stay one person seen from one angle.`
+          + (twins ? " One clip is following two people dressed the same, and they stay two people." : "");
+      const doubt = $("pp-doubt");
+      doubt.hidden = !told.worthDoubting;
+      if (told.worthDoubting) {
+        doubt.innerHTML = `<strong>Doubt this.</strong> ${Math.round(told.share * 100)}% of the `
+          + `${told.usable} usable sightings are one outfit — ${esc(told.commonest)} — across `
+          + `${told.outfits} outfits in all, at ${told.perLook.toFixed(1)} people a look. The matches `
+          + `below are confident and they are between people nobody filmed. This is the one failure `
+          + `the step cannot catch by itself, so it is measured and printed instead of believed.`;
+      }
+    }
+    setBusy(button, false, "▶ Match the angles");
+    running = false;
+    render();
+  }
+
+  function rows() {
+    const found = S.found;
+    if (!found) { $("pp-rows").innerHTML = ""; return; }
+    $("pp-rows").innerHTML = found.perClip.map(({ ph, seen, kept }) => {
+      const counted = new Map();
+      for (const one of seen) counted.set(one.wearing, (counted.get(one.wearing) || 0) + 1);
+      const chips = [...counted.entries()].map(([wearing, times]) => {
+        const keep = describesSomebody(wearing);
+        return keep
+          ? `<span class="step on">${esc(wearing)} × ${times}</span>`
+          : `<span class="step"><s>${esc(wearing)} × ${times}</s> — no colour-and-garment pair, dropped</span>`;
+      }).join("");
+      return `<div class="row"><div class="name"><i style="background:var(${ph.color})"></i>${esc(ph.name)}</div>
+        <div class="steps">${chips || '<span class="step">nobody could be described</span>'}</div>
+        <div><span class="pill ${kept.length ? "ok" : ""}">${kept.length} followed</span></div></div>`;
+    }).join("");
+  }
+
+  function draw() {
+    const g = setup(canvas);
+    const found = S.found;
+    if (!found || !found.tracklets.length) {
+      g.fontPx(13); g.fillStyle = css("--muted"); g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(found ? "No description picked out anybody, so nobody was followed." : "Press “Match the angles” to see who each clip followed.", canvas._w / 2, canvas._h / 2);
+      return;
+    }
+    const box = { l: 118, r: canvas._w - 16, t: 16, b: canvas._h - 30 };
+    const span = Math.max(...found.tracklets.map((t) => t.t_master_end_s), 1);
+    const X = (t) => box.l + (t / span) * (box.r - box.l);
+    const laneH = (box.b - box.t) / found.clips.length;
+    const middle = new Map();
+    found.clips.forEach((ph, i) => {
+      const y = box.t + i * laneH;
+      g.fillStyle = css("--ink"); g.fontPx(12, 500); g.textAlign = "right"; g.textBaseline = "middle";
+      g.fillText(ph.name, box.l - 10, y + laneH / 2);
+      const mine = found.tracklets.filter((t) => t.clip_id === ph.clip_id);
+      const rowH = Math.max(14, (laneH - 8) / Math.max(1, mine.length));
+      mine.forEach((track, k) => {
+        const top = y + 4 + k * rowH, x0 = X(track.t_master_start_s), x1 = X(track.t_master_end_s);
+        g.fillStyle = colorOf(ph); g.globalAlpha = 0.85;
+        g.beginPath(); g.roundRect(x0, top, Math.max(6, x1 - x0), rowH - 5, 3); g.fill();
+        g.globalAlpha = 1;
+        g.fillStyle = "#101113"; g.fontPx(10, 600); g.textAlign = "left"; g.textBaseline = "middle";
+        if (x1 - x0 > 90) g.fillText(track.wearing.slice(0, 38), x0 + 6, top + (rowH - 5) / 2);
+        middle.set(track.tracklet_id, { x: (x0 + x1) / 2, y: top + (rowH - 5) / 2 });
+      });
+    });
+    for (const match of found.matches.filter((m) => m.kept)) {
+      const from = middle.get(match.one.tracklet_id), to = middle.get(match.other.tracklet_id);
+      if (!from || !to) continue;
+      g.strokeStyle = match.score >= SURE ? css("--good") : css("--warning");
+      g.lineWidth = 2;
+      if (match.score < SURE) g.setLineDash([4, 3]);
+      g.beginPath(); g.moveTo(from.x, from.y); g.lineTo(to.x, to.y); g.stroke();
+      g.setLineDash([]); g.lineWidth = 1;
+      g.fillStyle = css("--ink"); g.fontPx(10, 600, true); g.textAlign = "center"; g.textBaseline = "middle";
+      const label = fmt(match.score, 2);
+      const mx = (from.x + to.x) / 2, my = (from.y + to.y) / 2;
+      g.fillStyle = css("--raised");
+      g.fillRect(mx - 14, my - 7, 28, 14);
+      g.fillStyle = css("--ink");
+      g.fillText(label, mx, my);
+    }
+    g.fillStyle = css("--muted"); g.fontPx(11); g.textAlign = "center"; g.textBaseline = "top";
+    for (const t of niceTicks(0, span, 8)) g.fillText(`${t} s`, X(t), box.b + 6);
+  }
+
+  function table() {
+    const found = S.found;
+    if (!found) { $("pp-table").innerHTML = ""; $("pp-tiles").innerHTML = ""; return; }
+    const name = (id) => found.clips.find((ph) => ph.clip_id === id).name;
+    const verdict = (match) => match.score >= SURE
+      ? '<span class="pill ok">same person</span>'
+      : match.kept ? '<span class="pill warning">worth checking</span>' : '<span class="pill">left apart</span>';
+    $("pp-table").innerHTML = `<thead><tr><th>One angle</th><th>The other</th><th>Pairs shared</th>
+      <th>Colours shared</th><th>Alike</th><th>Time together</th><th>Score</th><th>Verdict</th></tr></thead><tbody>${
+      found.matches.map((match) => `<tr>
+        <td>${esc(name(match.one.clip_id))}: ${esc(match.one.wearing)}</td>
+        <td>${esc(name(match.other.clip_id))}: ${esc(match.other.wearing)}</td>
+        <td class="num">${fmt(overlap(pairsOf(match.one.wearing), pairsOf(match.other.wearing)), 2)}</td>
+        <td class="num">${fmt(overlap(coloursOf(match.one.wearing), coloursOf(match.other.wearing)), 2)}</td>
+        <td class="num">${fmt(match.alike, 2)}</td>
+        <td class="num">+${fmt(match.bonus, 2)}</td>
+        <td class="num">${fmt(match.score, 2)}</td>
+        <td>${verdict(match)}</td></tr>`).join("")
+      || '<tr><td colspan="8">The assignment had nothing to offer: no two angles described anybody in terms that pick out a person.</td></tr>'}</tbody>`;
+    const across = found.people.filter((p) => p.clips.length > 1);
+    const right = found.matches.filter((m) => m.kept && m.one.who === m.other.who).length;
+    const dropped = found.perClip.reduce((s, c) => s + c.seen.filter((one) => !describesSomebody(one.wearing)).length, 0);
+    $("pp-tiles").innerHTML = `
+      <div class="tile"><span class="l">People found</span><span class="v">${found.people.length}</span><span class="s">${found.people.length - across.length} seen from one angle only</span></div>
+      <div class="tile"><span class="l">Across angles</span><span class="v">${across.length}</span><span class="s">${across.filter((p) => p.sure).length} of them confidently</span></div>
+      <div class="tile"><span class="l">Worth checking</span><span class="v">${found.matches.filter((m) => m.kept && m.score < SURE).length}</span><span class="s">${found.samePerson < SURE ? `above ${fmt(found.samePerson, 2)}, below ${SURE}` : "the bar is above the confident line"}</span></div>
+      <div class="tile"><span class="l">Sightings dropped</span><span class="v">${dropped}</span><span class="s">they describe a kind of person</span></div>
+      <div class="tile hidden-truth"><span class="l">Hidden truth</span><span class="v">${right} of ${found.matches.filter((m) => m.kept).length}</span><span class="s">matches join two angles of one person</span></div>`;
+  }
+
+  function render() { rows(); draw(); table(); }
+
+  $("pp-run").addEventListener("click", run);
+  $("pp-words").addEventListener("change", () => { if (S.found) run(); });
+  $("pp-bar").addEventListener("input", () => {
+    $("pp-bar-out").textContent = (+$("pp-bar").value).toFixed(2);
+    if (S.found) run();
+  });
+  return { reset() { S.found = null; $("pp-status").textContent = ""; render(); }, render };
 })();
 </script>
 <script>

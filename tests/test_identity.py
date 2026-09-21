@@ -428,6 +428,23 @@ def test_how_varied_an_events_descriptions_are_is_measured():
     assert not varied.worth_doubting
 
 
+def test_an_event_with_few_people_in_it_is_not_flagged_for_that_alone():
+    """A real event where one person is on screen throughout reaches 40%, and is honest.
+
+    This is the case the bar has to clear: it sits above a drawn event of four phones and six
+    people (36%) and below a stadium crowd where the model invented one person (56%).
+    """
+    others = ["a red sleeveless top", "a green jacket", "a black dress",
+              "a yellow top", "a blue hoodie", "a brown coat"]  # fmt: skip
+    small = describing(
+        [_seen(t * 10, "a white shirt and a navy cap") for t in range(4)]
+        + [_seen(t * 10, wearing) for t, wearing in enumerate(others)],
+        windows=6,
+    )
+    assert small.commonest_share == 0.4
+    assert not small.worth_doubting
+
+
 def test_one_description_over_and_over_is_flagged_as_worth_doubting():
     # What a stadium crowd at night produces: the model stops describing people and repeats one
     # plausible concert-goer, and the repeats match each other across angles perfectly well.
