@@ -123,6 +123,10 @@ td.name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 #pair-graph { width: 100%; height: auto; display: block; }
 #pair-graph text { fill: var(--ink); font: 12px "IBM Plex Sans", sans-serif; }
 
+/* a citation inside a sentence: small, quiet, and the thing a doubting reader clicks */
+.cite { color: var(--accent); cursor: pointer; font-size: 12px; vertical-align: 1px; padding: 0 1px; }
+.cite:hover, .cite:focus-visible { text-decoration: underline; }
+
 /* film */
 .film-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 900px) { .film-grid { grid-template-columns: minmax(0, 1fr); } }
@@ -138,6 +142,30 @@ td.name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 .shot .when { font-family: var(--mono); font-size: 12px; color: var(--muted); }
 .shot .who { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shot .why { font-size: 12px; color: var(--muted); }
+
+/* the account: one sentence a line, each a button that takes the reader to its own moment */
+.story-wrap { display: grid; gap: 12px; max-width: 980px; }
+.story-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.line {
+  width: 100%; display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 6px 12px;
+  text-align: left; cursor: pointer; padding: 10px 12px; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+}
+.line:hover { background: var(--raised); border-color: var(--accent); }
+.line .when { color: var(--muted); font-size: 12px; padding-top: 3px; }
+.line .said { font-size: 15px; }
+.line .behind, .line .why { grid-column: 2; }
+.line .behind { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.who {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 190px; font-size: 12px;
+  color: var(--ink-2); background: var(--raised); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px;
+}
+.who i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+.who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* what the account left out: there, for anyone who wants it, and quiet otherwise */
+.left-out { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.left-out summary { cursor: pointer; color: var(--ink-2); }
+.left-out ul { margin: 8px 0 2px; padding-left: 18px; display: grid; gap: 4px; }
 
 .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; font-size: 13px; }
 

@@ -279,3 +279,15 @@ def test_an_answer_that_only_mentions_not_showing_still_counts():
 
     assert len(lines) == 1
     assert lines[0].cites == ["e-001"]
+
+
+def test_each_citation_carries_the_moment_it_points_at():
+    """So a reader can click [2] and watch that moment, not the start of the sentence."""
+    events = [happened(1, 10.0, clips=("a",)), happened(2, 90.0, clips=("b",))]
+
+    lines, _ = write_story(
+        events, "pretend", answers("One thing happened [1] and later another [2].")
+    )
+
+    assert lines[0].cites == ["e-001", "e-002"]
+    assert lines[0].cite_times_s == [10.0, 90.0]

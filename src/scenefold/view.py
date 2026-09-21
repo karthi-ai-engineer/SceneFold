@@ -8,6 +8,10 @@
     GET /api/timeline           data/<event>/timeline.json, as `scenefold sync` wrote it
     GET /api/manifest           data/<event>/manifest.json, as `scenefold ingest` wrote it
     GET /api/cut                data/<event>/cut.json, the shot list `scenefold cut` wrote
+    GET /api/story              data/<event>/story.json, the cited account `scenefold story` wrote
+    GET /api/events?from=&to=   what `scenefold fuse` knows happened in that stretch of the shared
+                                clock (seconds; the whole event when they are left out), each
+                                moment with its evidence and any conflict
     GET /media/<clip_id>.mp4    that clip's working video, with Range support so the browser can
                                 seek
     GET /film.mp4               data/<event>/cut.mp4, the finished film, with the same Range support
@@ -20,18 +24,23 @@ sites can't reach the viewer through their own domain names.
 
 import errno
 import json
+import math
 import os
 import re
+import sqlite3
 import webbrowser
-from contextlib import suppress
+from contextlib import closing, suppress
+from dataclasses import asdict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import BinaryIO
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from scenefold.cut import CUT_NAME, FILM_NAME
+from scenefold.knowledge import KNOWLEDGE_NAME, Event, events_between
 from scenefold.manifest import MANIFEST_NAME, ManifestError, load_manifest, normalize_event_id
+from scenefold.story import STORY_NAME
 from scenefold.timeline import TIMELINE_NAME, TimelineError, load_timeline
 
 HOST = "127.0.0.1"  # never reachable from other computers
@@ -54,9 +63,13 @@ API_FILES = {  # route -> (file in the event folder, the command that writes it)
     "/api/timeline": (TIMELINE_NAME, "scenefold sync"),
     "/api/manifest": (MANIFEST_NAME, "scenefold ingest"),
     "/api/cut": (CUT_NAME, "scenefold cut"),
+    "/api/story": (STORY_NAME, "scenefold story"),
 }
 # The film is one video of the whole event, not one clip, so it gets a name of its own.
 FILM_PATH = "/film.mp4"
+# The event store is a database, not a file to hand over: this route answers questions of it.
+EVENTS_PATH = "/api/events"
+NO_STORE = f"this event has no {KNOWLEDGE_NAME} yet; run `scenefold fuse`"
 
 _MEDIA_PATH = re.compile(r"/media/([0-9a-f]{12})\.mp4")
 _BYTE_RANGE = re.compile(r"\s*bytes\s*=\s*(\d*)\s*-\s*(\d*)\s*", re.IGNORECASE)
@@ -70,6 +83,10 @@ class ViewError(Exception):
 
 class _NotFound(Exception):
     """Answer 404; the message says why."""
+
+
+class _BadQuery(Exception):
+    """The request asked for something that makes no sense, like `from=soon`; answer 400."""
 
 
 class _RangeNotSatisfiable(Exception):
@@ -142,6 +159,45 @@ def _clip_video(event_dir: Path, clip_id: str) -> Path:
     return video
 
 
+def _asked_span(query: str) -> tuple[float, float]:
+    """The stretch of the shared clock a request asks about, in seconds.
+
+    No `from` means from the start of the event, no `to` means to the end of it, so a request
+    without either gets everything that is known.
+    """
+    asked = parse_qs(query)
+    span = []
+    for name, whole_event in (("from", float("-inf")), ("to", float("inf"))):
+        given = (asked.get(name) or [""])[-1].strip()
+        if not given:
+            span.append(whole_event)
+            continue
+        try:
+            span.append(float(given))
+        except ValueError as exc:
+            raise _BadQuery(f"{name}={given} is not a number of seconds") from exc
+    return span[0], span[1]
+
+
+def _known_events(event_dir: Path, t_start_s: float, t_end_s: float) -> list[Event]:
+    """What the event store knows happened in that stretch, or _NotFound.
+
+    The store is opened read-only (`mode=ro`): the viewer only ever shows what `scenefold fuse`
+    found, and a page in a browser must not be able to change it.
+    """
+    store = (event_dir / KNOWLEDGE_NAME).resolve()  # a URI needs the whole path
+    if not store.is_file():
+        raise _NotFound(NO_STORE)
+    try:
+        with closing(sqlite3.connect(f"{store.as_uri()}?mode=ro", uri=True)) as db:
+            db.row_factory = sqlite3.Row
+            return events_between(db, t_start_s, t_end_s)
+    except sqlite3.Error as exc:
+        raise _NotFound(
+            f"{KNOWLEDGE_NAME} cannot be read ({exc}); run `scenefold fuse` again"
+        ) from exc
+
+
 def _names_this_computer(host: str | None) -> bool:
     """False when a request's Host header names another site.
 
@@ -177,12 +233,15 @@ class _Handler(BaseHTTPRequestHandler):
         if not _names_this_computer(self.headers.get("Host")):
             self._send_error(HTTPStatus.FORBIDDEN, f"this viewer only answers at {self.server.url}")
             return
-        path = self.path.split("?", 1)[0].split("#", 1)[0]
+        path, _, query = self.path.partition("?")
+        path = path.split("#", 1)[0]
         try:
             if path in API_FILES:
                 name, command = API_FILES[path]
                 missing = f"this event's {name} is missing or unreadable; run `{command}`"
                 self._send_file(self.server.event_dir / name, "application/json", missing)
+            elif path == EVENTS_PATH:
+                self._send_events(query.split("#", 1)[0])
             elif path.startswith("/media/"):
                 match = _MEDIA_PATH.fullmatch(path)
                 if match is None:
@@ -192,17 +251,36 @@ class _Handler(BaseHTTPRequestHandler):
                 film = self.server.event_dir / FILM_NAME
                 self._send_video(film, "this event has no film yet; run `scenefold cut`")
             elif path.startswith("/api/"):
-                raise _NotFound(f"there is no {path}; try /api/timeline, /api/manifest or /api/cut")
+                known = ", ".join([*API_FILES, EVENTS_PATH])
+                raise _NotFound(f"there is no {path}; try {known}")
             else:
                 file = _static_file(self.server.web_dir, path)
                 missing = f"the viewer has no file at {path}"
                 self._send_file(file, CONTENT_TYPES[file.suffix.lower()], missing)
         except _NotFound as exc:
             self._send_error(HTTPStatus.NOT_FOUND, str(exc))
+        except _BadQuery as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
 
     def _send_error(self, status: HTTPStatus, message: str) -> None:
         body = json.dumps({"error": message}).encode()
         self._start(status, "application/json", len(body))
+        self._write(body)
+
+    def _send_events(self, query: str) -> None:
+        """The moments in the asked-for stretch, each with its evidence and any conflict."""
+        t_start_s, t_end_s = _asked_span(query)
+        events = _known_events(self.server.event_dir, t_start_s, t_end_s)
+        answer = {
+            # The bounds as asked, with null for "as far as the event goes": JSON has no word for
+            # forever, and a browser refuses to read the one Python would write (Infinity).
+            "from_s": t_start_s if math.isfinite(t_start_s) else None,
+            "to_s": t_end_s if math.isfinite(t_end_s) else None,
+            "count": len(events),
+            "events": [asdict(event) | {"witnesses": event.witnesses} for event in events],
+        }
+        body = json.dumps(answer).encode()
+        self._start(HTTPStatus.OK, "application/json", len(body))
         self._write(body)
 
     def _send_file(self, file: Path, content_type: str, missing: str) -> None:

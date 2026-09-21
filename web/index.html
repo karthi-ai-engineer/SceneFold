@@ -15,6 +15,7 @@
     <div class="event"><span id="event-name">Loading…</span><span id="event-meta" class="muted"></span></div>
     <nav class="tabs" role="tablist">
       <button role="tab" id="tab-viewer" aria-selected="true" aria-controls="viewer">Viewer</button>
+      <button role="tab" id="tab-story" aria-selected="false" aria-controls="story">What happened</button>
       <button role="tab" id="tab-report" aria-selected="false" aria-controls="report">Sync report</button>
       <button role="tab" id="tab-film" aria-selected="false" aria-controls="film">Film</button>
     </nav>
@@ -60,6 +61,18 @@
         <summary>Sync health <span class="muted">— how far each picture is from where the shared clock wants it, measured on every frame shown</span></summary>
         <div class="table-wrap"><table id="health-table"></table></div>
       </details>
+    </section>
+
+    <section id="story" role="tabpanel" aria-labelledby="tab-story" hidden>
+      <p id="story-note" class="muted">Loading the account…</p>
+      <div id="story-wrap" class="story-wrap" hidden>
+        <p id="story-about" class="muted small"></p>
+        <ol id="story-lines" class="story-lines"></ol>
+        <details id="story-dropped" class="left-out" hidden>
+          <summary>Left out <span id="dropped-count" class="muted"></span></summary>
+          <ul id="dropped-list" class="small muted"></ul>
+        </details>
+      </div>
     </section>
 
     <section id="report" role="tabpanel" aria-labelledby="tab-report" hidden>

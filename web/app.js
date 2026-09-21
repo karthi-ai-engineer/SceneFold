@@ -9,6 +9,7 @@
 import * as sync from "./sync.js";
 import { renderReport } from "./report.js";
 import { loadFilm, startFilm } from "./film.js";
+import { loadStory, openStory } from "./story.js";
 
 // categorical colors in fixed order (validated palette, dark steps); a 9th clip and beyond stay grey
 export const COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];
@@ -16,7 +17,7 @@ export const OTHER = "#8f8e88";
 // After a start or jump, videos begin at slightly different moments and catch up within about a
 // second (measured); the health table reports how well they then stay together.
 const START_GRACE_MS = 1000;
-const TABS = ["viewer", "report", "film"];
+const TABS = ["viewer", "story", "report", "film"];
 const FIRST_LEAD_S = 0.3; // a jump while playing aims this far ahead until the clip's own is known
 
 const $ = (id) => document.getElementById(id);
@@ -427,6 +428,22 @@ function updateHealth() {
 
 /* ---------------- start up ---------------- */
 
+/** Show one tab and hide the others; a sentence in the account uses it to get back to the clips. */
+function showTab(tab) {
+  for (const other of TABS) {
+    $(other).hidden = other !== tab;
+    $(`tab-${other}`).setAttribute("aria-selected", String(other === tab));
+  }
+  // one sound at a time: the film and the clips both have some
+  if (tab === "film") {
+    pause();
+    startFilm(); // the film itself is only fetched once someone wants to watch it
+  } else {
+    $("film-video").pause();
+  }
+  if (tab === "story") openStory(); // likewise, why the clips disagreed is asked for only now
+}
+
 function bindControls() {
   $("play").addEventListener("click", () => (state.playing ? pause() : play()));
   $("back-frame").addEventListener("click", () => step(-1));
@@ -436,21 +453,7 @@ function bindControls() {
   $("speed").addEventListener("change", (event) => setSpeed(Number(event.target.value)));
   $("audio").addEventListener("change", (event) => setAudio(event.target.value || null));
   $("align").addEventListener("change", (event) => setAlign(event.target.value));
-  for (const tab of TABS) {
-    $(`tab-${tab}`).addEventListener("click", () => {
-      for (const other of TABS) {
-        $(other).hidden = other !== tab;
-        $(`tab-${other}`).setAttribute("aria-selected", String(other === tab));
-      }
-      // one sound at a time: the film and the clips both have some
-      if (tab === "film") {
-        pause();
-        startFilm(); // the film itself is only fetched once someone wants to watch it
-      } else {
-        $("film-video").pause();
-      }
-    });
-  }
+  for (const tab of TABS) $(`tab-${tab}`).addEventListener("click", () => showTab(tab));
   document.addEventListener("keydown", (event) => {
     if (event.target.closest("select, input, textarea") || event.ctrlKey || event.metaKey || event.altKey) return;
     if (!$("film").hidden) return; // the film has its own controls; these keys drive the clips
@@ -483,6 +486,12 @@ async function boot() {
   // Ask for the shot list before the clips' videos do, because they hold every connection the
   // browser allows to one site (six in Chrome) for as long as they are loading.
   loadFilm(timeline, colorOf, OTHER);
+  // Every sentence of the account is checkable in one click: it takes the reader to that moment.
+  loadStory(timeline, colorOf, OTHER, (t) => {
+    showTab("viewer");
+    seekTo(t);
+    toast(`Jumped to ${sync.formatTime(t, 1)}`);
+  });
   state.clips = placed.map((c) => makeClip(c, colorOf[c.clip_id]));
   state.unplaced = timeline.clips.filter((c) => !c.placed);
   // Watching several clips is the whole point of this page, so start on the pictures whenever sync

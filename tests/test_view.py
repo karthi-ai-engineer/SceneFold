@@ -15,6 +15,15 @@ import pytest
 from scenefold import view
 from scenefold.cli import main
 from scenefold.cut import FILM_NAME, ONLY_ANGLE, CutSettings, Film, Shot, save_cut
+from scenefold.knowledge import (
+    KNOWLEDGE_NAME,
+    NOT_IN_VIEW,
+    Conflict,
+    Event,
+    Evidence,
+    open_store,
+    replace_all,
+)
 from scenefold.manifest import (
     Clip,
     ClipStatus,
@@ -25,6 +34,7 @@ from scenefold.manifest import (
     now,
     save_manifest,
 )
+from scenefold.story import STORY_NAME, Line, Story, save_story
 from scenefold.timeline import ClipPlacement, SyncSettings, Timeline, save_timeline
 from scenefold.view import ViewError, ViewerServer, make_server, serve
 
@@ -126,6 +136,93 @@ def film(workspace) -> Film:
     save_cut(workspace, cut)
     (workspace / FILM_NAME).write_bytes(FILM)
     return cut
+
+
+@pytest.fixture
+def knowledge(workspace) -> list[Event]:
+    """The same event once `scenefold fuse` has been over it: two moments, the second disputed."""
+    events = [
+        Event(
+            event_id=f"{EVENT}-00001",
+            t_master_s=1.5,
+            kind="sound",
+            strength=0.8,
+            recording=1,
+            summary="the lights drop",
+            evidence=[
+                Evidence(
+                    clip_id=CLIP_ID,
+                    t_local_s=1.5,
+                    kind="sound",
+                    strength=0.8,
+                    summary="the lights drop",
+                    picture_score=0.61,
+                )
+            ],
+        ),
+        Event(
+            event_id=f"{EVENT}-00002",
+            t_master_s=6.25,
+            kind="picture",
+            strength=0.4,
+            recording=2,
+            summary="confetti over the crowd",
+            evidence=[
+                Evidence(clip_id=CLIP_ID, t_local_s=6.25, kind="picture", strength=0.4),
+                Evidence(clip_id=FAILED_ID, t_local_s=6.2, kind="picture", strength=0.3),
+            ],
+            conflicts=[
+                Conflict(
+                    kind=NOT_IN_VIEW,
+                    explanation="2 of 3 clips filming at this moment caught it",
+                    reason="no camera had a clearly better view",
+                )
+            ],
+        ),
+    ]
+    clips = [
+        {
+            "clip_id": clip_id,
+            "name": name,
+            "offset_s": 0.0,
+            "heard_late_s": 0.0,
+            "drift_ppm": None,
+            "duration_s": 10.0,
+        }
+        for clip_id, name in ((CLIP_ID, "a.mp4"), (FAILED_ID, "b.mp4"))
+    ]
+    db = open_store(workspace)
+    replace_all(db, clips, events)
+    db.close()
+    return events
+
+
+@pytest.fixture
+def story(workspace) -> Story:
+    """The account `scenefold story` writes: two sentences, one of them disputed, one left out."""
+    written = Story(
+        event_id=EVENT,
+        created_at=now(),
+        model="test-model",
+        lines=[
+            Line(
+                t_master_s=1.5,
+                text="The lights drop.",
+                cites=[f"{EVENT}-00001"],
+                clips=[CLIP_ID],
+            ),
+            Line(
+                t_master_s=6.25,
+                text="Confetti falls over the crowd.",
+                cites=[f"{EVENT}-00002"],
+                clips=[CLIP_ID, FAILED_ID],
+                disputed=True,
+            ),
+        ],
+        dropped=["The crowd sang along — points at no moment"],
+    )
+    save_story(workspace, written)
+    return written
 
 
 @pytest.fixture
@@ -320,8 +417,9 @@ def test_a_range_it_does_not_understand_gets_the_whole_video(viewer, asked):
     assert body == VIDEO
 
 
-def test_head_sends_the_same_headers_without_a_body(viewer):
-    for path in ("/", "/app.js", "/api/timeline", "/api/manifest", VIDEO_URL, "/missing.js"):
+def test_head_sends_the_same_headers_without_a_body(viewer, story, knowledge):
+    paths = ("/", "/app.js", "/api/timeline", "/api/manifest", "/api/story", "/api/events")
+    for path in (*paths, VIDEO_URL, "/missing.js"):
         got_status, got_headers, _ = fetch(viewer, path)
         status, headers, body = fetch(viewer, path, method="HEAD")
         assert (status, body) == (got_status, b""), path
@@ -411,6 +509,110 @@ def test_a_cut_without_its_film_still_serves_the_shot_list(viewer, film, workspa
     status, _, body = fetch(viewer, "/film.mp4")
     assert status == 404
     assert "no film yet" in error_of(body)
+
+
+def test_the_story_is_served_as_written(viewer, story, workspace):
+    status, headers, body = fetch(viewer, "/api/story")
+    assert status == 200
+    assert headers["Content-Type"] == "application/json"
+    assert headers["Cache-Control"] == "no-store"
+    assert body == (workspace / STORY_NAME).read_bytes()
+    told = json.loads(body)
+    assert [line["text"] for line in told["lines"]] == [line.text for line in story.lines]
+    assert told["lines"][1]["disputed"] is True
+    assert told["dropped"] == story.dropped
+
+
+def test_an_event_without_an_account_says_what_to_run(viewer):
+    status, headers, body = fetch(viewer, "/api/story")
+    assert status == 404
+    assert headers["Content-Type"] == "application/json"
+    assert "scenefold story" in error_of(body)
+
+
+def test_the_moments_of_a_stretch_come_with_their_evidence_and_conflicts(viewer, knowledge):
+    status, headers, body = fetch(viewer, "/api/events?from=5&to=7")
+    assert status == 200
+    assert headers["Content-Type"] == "application/json"
+    answer = json.loads(body)
+    assert (answer["from_s"], answer["to_s"], answer["count"]) == (5.0, 7.0, 1)
+    (moment,) = answer["events"]
+    assert moment["event_id"] == f"{EVENT}-00002"
+    assert moment["t_master_s"] == 6.25
+    assert moment["witnesses"] == 2
+    assert moment["recording"] == 2
+    assert [e["clip_id"] for e in moment["evidence"]] == [CLIP_ID, FAILED_ID]
+    assert moment["conflicts"][0]["kind"] == NOT_IN_VIEW
+    assert moment["conflicts"][0]["resolved_by"] is None
+    assert "clearly better view" in moment["conflicts"][0]["reason"]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("", [1.5, 6.25]),  # no span at all: the whole event
+        ("?from=0&to=10", [1.5, 6.25]),
+        ("?from=1.5&to=6.25", [1.5]),  # the start is included, the end is not
+        ("?from=2", [6.25]),  # from here to the end of the event
+        ("?to=2", [1.5]),  # from the beginning of the event to here
+        ("?from=&to=", [1.5, 6.25]),  # empty is the same as leaving them out
+        ("?from=7&to=9", []),
+        ("?from=9&to=1", []),  # nothing at all, rather than everything
+    ],
+)
+def test_the_moments_asked_for_are_the_ones_in_that_stretch(viewer, knowledge, query, expected):
+    status, _, body = fetch(viewer, f"/api/events{query}")
+    assert status == 200
+    answer = json.loads(body)
+    assert [moment["t_master_s"] for moment in answer["events"]] == expected
+    assert answer["count"] == len(expected)
+
+
+def test_the_whole_event_is_the_span_when_none_is_asked_for(viewer, knowledge):
+    status, _, body = fetch(viewer, "/api/events")
+    answer = json.loads(body)
+    assert status == 200
+    assert (answer["from_s"], answer["to_s"]) == (None, None)  # JSON cannot say "for ever"
+
+
+def test_a_span_without_an_end_is_still_readable_json(viewer, knowledge):
+    # "inf" is a number to Python but not to JSON, and a browser refuses a body holding Infinity
+    status, _, body = fetch(viewer, "/api/events?from=-inf&to=inf")
+    assert status == 200
+    assert b"Infinity" not in body
+    answer = json.loads(body)
+    assert (answer["from_s"], answer["to_s"], answer["count"]) == (None, None, 2)
+
+
+def test_a_span_that_is_not_a_number_of_seconds_is_refused(viewer, knowledge):
+    for query, said in (("?from=soon", "from=soon"), ("?to=later", "to=later")):
+        status, headers, body = fetch(viewer, f"/api/events{query}")
+        assert status == 400, query
+        assert headers["Content-Type"] == "application/json"
+        assert said in error_of(body)
+
+
+def test_asking_the_store_never_changes_it(viewer, knowledge, workspace):
+    store = workspace / KNOWLEDGE_NAME
+    before = store.read_bytes()
+    for path in ("/api/events", "/api/events?from=0&to=3"):
+        assert fetch(viewer, path)[0] == 200
+    assert store.read_bytes() == before
+    assert not list(workspace.glob(f"{KNOWLEDGE_NAME}-*"))  # no journal left beside it either
+
+
+def test_an_event_nobody_has_fused_says_so(viewer):
+    status, headers, body = fetch(viewer, "/api/events")
+    assert status == 404
+    assert headers["Content-Type"] == "application/json"
+    assert "scenefold fuse" in error_of(body)
+
+
+def test_a_store_that_cannot_be_read_says_so(viewer, workspace):
+    (workspace / KNOWLEDGE_NAME).write_bytes(b"not a database")
+    status, _, body = fetch(viewer, "/api/events")
+    assert status == 404
+    assert "scenefold fuse" in error_of(body)
 
 
 def test_the_viewer_needs_a_synced_event(workspace, web):

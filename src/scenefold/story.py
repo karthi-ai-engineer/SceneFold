@@ -53,6 +53,9 @@ class Line(BaseModel):
     # within the sentence: [1] is the first event in `cites`, [2] the second.
     text: str
     cites: list[str] = []  # the events it rests on, in the order the marks appear
+    # When each cited moment happened, so a reader can click [2] and watch that one rather than
+    # the start of the sentence. Same order as `cites`.
+    cite_times_s: list[float] = []
     clips: list[str] = []  # the clips those events were seen in
     disputed: bool = False  # True when a cited event is one the clips disagreed about
 
@@ -339,6 +342,7 @@ def _cited_lines(text: str, chosen: list[Event]) -> tuple[list[Line], list[str]]
             continue
         if lines and lines[-1].text == clean:
             lines[-1].cites += [event.event_id for event in behind]
+            lines[-1].cite_times_s += [event.t_master_s for event in behind]
             lines[-1].clips = sorted(set(lines[-1].clips) | set(clips))
             lines[-1].disputed = lines[-1].disputed or any(event.conflicts for event in behind)
             continue
@@ -347,6 +351,7 @@ def _cited_lines(text: str, chosen: list[Event]) -> tuple[list[Line], list[str]]
                 t_master_s=behind[0].t_master_s,
                 text=clean,
                 cites=[event.event_id for event in behind],
+                cite_times_s=[event.t_master_s for event in behind],
                 clips=clips,
                 disputed=any(event.conflicts for event in behind),
             )
