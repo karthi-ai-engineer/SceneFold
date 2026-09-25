@@ -24,6 +24,7 @@ from scenefold.observations import OBSERVATIONS_DIR, PeopleSettings, SpeechSetti
 from scenefold.observe import WatchError, observe_event
 from scenefold.people import watch_people
 from scenefold.picture_offset import metres
+from scenefold.positions import POSITIONS_NAME, MapError, map_event
 from scenefold.speech import SpeechError
 from scenefold.story import STORY_NAME, StoryError, ask_event, tell_event
 from scenefold.sync import SyncError, sync_event
@@ -259,6 +260,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     cut_parser.add_argument(
         "--plan-only", action="store_true", help="choose the shots but don't render the film"
     )
+    map_parser = commands.add_parser(
+        "map",
+        help="work out where each phone stood, from when it heard things",
+        description="Place the phones on a top-down map from the moments they heard the same "
+        "sounds: sound covers a metre in 2.9 ms. Needs several sounds made in different places; "
+        "with only one it says how far each phone stood from it and nothing more. Writes "
+        "<data-dir>/<event>/positions.json, and the viewer draws it.",
+    )
+    map_parser.add_argument("event", help="event name used with sync, e.g. match-01")
+    map_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="folder that holds event workspaces (default: ./data)",
+    )
     view_parser = commands.add_parser(
         "view",
         help="watch an event's clips together in the browser",
@@ -298,6 +314,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "story": _run_story,
         "ask": _run_ask,
         "cut": _run_cut,
+        "map": _run_map,
         "view": _run_view,
     }
     return run[args.command](args)
@@ -638,6 +655,43 @@ def _run_cut(args: argparse.Namespace) -> int:
 
 def _name_of(film: Film, clip_id: str) -> str:
     return next((shot.name for shot in film.shots if shot.clip_id == clip_id), clip_id)
+
+
+def _run_map(args: argparse.Namespace) -> int:
+    try:
+        camera_map = map_event(args.event, data_dir=args.data_dir)
+    except MapError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("\ninterrupted; nothing was written", file=sys.stderr)
+        return 130
+
+    placed = [c for c in camera_map.cameras if c.placed]
+    if camera_map.solved and placed:
+        print(
+            f"\nWhere the phones stood at {camera_map.event_id}: {len(placed)} of "
+            f"{len(camera_map.cameras)} placed, from {camera_map.events_used} sounds "
+            f"(fits within {camera_map.residual_ms:.1f} ms)"
+        )
+        width = min(34, max((len(c.name) for c in camera_map.cameras), default=0))
+        for camera in camera_map.cameras:
+            if camera.placed:
+                give_or_take = (
+                    f"  give or take {camera.uncertainty_m:.0f} m" if camera.uncertainty_m else ""
+                )
+                where = f"{camera.x_m:7.1f} m, {camera.y_m:7.1f} m"
+                print(f"  {camera.name[:34]:<{width}}  {where}{give_or_take}")
+            else:
+                print(f"  {camera.name[:34]:<{width}}  not placed: {camera.reason}")
+        print("  The distances are real; the direction is not. The map may be turned or mirrored.")
+    else:
+        print(f"\nNo map for {camera_map.event_id}: {camera_map.reason}")
+        for camera in camera_map.cameras:
+            if camera.from_main_sound_m is not None:
+                print(f"  {camera.name}: about {camera.from_main_sound_m:.0f} m from the sound")
+    print(f"Map: {Path(args.data_dir) / camera_map.event_id / POSITIONS_NAME}")
+    return 0
 
 
 def _run_view(args: argparse.Namespace) -> int:

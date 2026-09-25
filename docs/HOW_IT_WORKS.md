@@ -287,6 +287,41 @@ uv sync --extra speech                       # once, if you want speech as well
 uv run scenefold observe my-event --speech-model small
 ```
 
+## Where the phones stood
+
+`scenefold map <event>` places the phones on a top-down map, from the moments they heard the same
+sounds. Sound covers a metre in 2.9 ms, so a phone 50 m further from a clap hears it 146 ms later.
+
+- **One sound is not enough.** It only says how far a phone sat from that sound, which is a circle
+  around it. A map needs several sounds made in **different places**: each one gives every phone a
+  different distance, and together they pin the phones down.
+- **Finding the sounds.** Sharp transients (claps, hits, shouts) are detected in every clip, grouped
+  when they land at the same moment on the shared clock, and each clip's arrival is then timed
+  precisely by matching a short window of audio around it. On drawn clips those arrivals are right
+  to 0.03 ms — a centimetre of distance — and 0.14 ms when the phones' clocks drift.
+- **Solving.** Every camera position and every sound position and instant are solved together
+  (multilateration), with a robust loss so one bad arrival cannot bend the map. The unknowns are two
+  per camera and three per sound, so there has to be enough to go on:
+  `cameras x sounds >= 2 x cameras + 3 x sounds`, plus the gauge freedoms.
+- **The head start.** Sync lines clips up by what they *heard*, so each clip's offset has already
+  absorbed its own travel time from the loudest source. Where sync's picture pass measured
+  `heard_late_s`, that is added back and each camera costs two unknowns; where it did not, each
+  camera carries a third unknown and more sounds are needed. The map says which happened.
+- **It refuses rather than guesses:** when no sound was heard by three clips, when the counting rule
+  is unmet, when every sound came from one place ("circles, not a map"), when the fit is poor, or for
+  any single camera heard by too few sounds or left uncertain by more than half the map's width.
+  Then the viewer draws the circles instead — each phone's distance from the main sound.
+- **The frame means nothing.** One camera sits at the origin, another on the x axis, and the whole
+  map may be turned or mirrored: sound cannot tell a plan from its mirror image, and nothing here
+  points north. Distances between phones are the real content.
+
+**Measured.** On drawn audio (five phones on a 30 x 30 m field, six claps at known spots) every
+phone lands within **1 cm**, the arrivals fitting to 0.01 ms. On exact arrivals with timing noise
+added: **1.8 m** out with 2 ms of noise, 3.8 m with 5 ms, each reported with its own doubt figure
+from leaving one sound out at a time. Real footage will be worse: echo, phones that move, and sound
+that arrives round corners all break the straight-line assumption. It has not been tried on real
+footage yet.
+
 
 ---
 

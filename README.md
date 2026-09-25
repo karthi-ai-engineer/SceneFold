@@ -35,6 +35,7 @@
 | **Read it, question it** | `scenefold story` / `ask` | Sentences that cite the clip and second they came from, checked in code |
 | **See the disagreements** | in the viewer | Where the cameras don't agree, kept visible instead of smoothed away |
 | **Get a film** | `scenefold cut` | One edit of the best angles, with a stated reason for every shot |
+| **See where they stood** | `scenefold map` | A top-down map of the phones, worked out from how late each one heard things |
 
 Nothing is uploaded. Every step runs on your own machine, and the AI steps use a local model.
 
@@ -172,6 +173,7 @@ scenefold fuse <event>                         # merge the clips into knowledge.
 scenefold story <event>                        # a cited account → story.json
 scenefold ask <event> "<question>"             # answered from the store, with citations
 scenefold cut <event>                          # the shot list and cut.mp4
+scenefold map <event>                          # where each phone stood → positions.json
 scenefold view <event>                         # the synced viewer, at 127.0.0.1:8765
 ```
 
@@ -186,7 +188,8 @@ data/<event>/
 ├─ observations/       what each clip shows                     (observe)
 ├─ knowledge.sqlite    events, evidence, disagreements          (fuse)
 ├─ story.json          the cited account                        (story)
-└─ cut.json, cut.mp4   the shot list and the film               (cut)
+├─ cut.json, cut.mp4   the shot list and the film               (cut)
+└─ positions.json      where each phone stood                    (map)
 ```
 </details>
 

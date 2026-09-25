@@ -120,6 +120,46 @@ def write_wav(path: Path, samples: np.ndarray, rate: int = RATE) -> Path:
     return path
 
 
+def claps(seconds: float, at_s: tuple[float, ...], rate: int = RATE) -> np.ndarray:
+    """Silence with one sharp clap at each of `at_s`: a sound with a definite instant."""
+    rng = np.random.default_rng(len(at_s))
+    signal = np.zeros(int(seconds * rate), dtype=np.float64)
+    length = rate // 100  # 10 ms, short enough that its arrival is a moment, not a smear
+    shape = np.exp(-np.arange(length) / (rate * 0.002))
+    for when in at_s:
+        start = int(when * rate)
+        signal[start : start + length] += rng.standard_normal(length) * shape
+    return (signal / max(1e-9, np.max(np.abs(signal))) * 0.9).astype(np.float32)
+
+
+def heard_at(
+    position: tuple[float, float],
+    sources: list[tuple[tuple[float, float], np.ndarray]],
+    *,
+    snr_db: float = 30.0,
+    seed: int = 1,
+    rate: int = RATE,
+) -> np.ndarray:
+    """What a phone standing at `position` hears from sounds made at known places.
+
+    Each source arrives distance / 343 s late and quieter with distance, which is the whole basis
+    of the camera map: the differences between phones' arrival times are differences in distance.
+    """
+    rng = np.random.default_rng(seed)
+    length = max(len(signal) for _, signal in sources)
+    heard = np.zeros(length, dtype=np.float64)
+    for (x, y), signal in sources:
+        metres = float(np.hypot(x - position[0], y - position[1]))
+        delay = int(round(metres / SOUND_M_PER_S * rate))
+        loudness = 1.0 / max(1.0, metres / 10.0)  # quieter further away, never louder than nearby
+        piece = signal[: length - delay] if delay else signal[:length]
+        heard[delay : delay + len(piece)] += piece * loudness
+    power = np.mean(heard**2)
+    if power > 0:
+        heard += rng.standard_normal(length) * np.sqrt(power / 10 ** (snr_db / 10))
+    return np.clip(heard, -1.0, 1.0).astype(np.float32)
+
+
 def lighting(seconds: float, seed: int = 0, fps: float = 30.0) -> np.ndarray:
     """Stage lighting as a brightness curve: many pulses at unrelated speeds, never repeating.
 

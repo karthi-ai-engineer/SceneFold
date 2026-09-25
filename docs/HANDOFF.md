@@ -100,6 +100,11 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 version 1 line (fixes, and the verification still owed). Scope is not decided: see `docs/ROADMAP.md`,
 "Version 2", for the candidates.
 
+**First version 2 piece, built 2026-09-25: the camera map** (`scenefold map`). The leftover
+per-camera delay is distance, so sounds made in different places place the phones on a top-down map.
+Within 1 cm on drawn audio, 1.8 m with 2 ms of timing noise; refuses when all the sounds came from
+one place. **Not tried on real footage** — that is the next thing to do with it (Coldplay, Jiku).
+
 ### Next steps, in order
 
 1. ~~Finish Phase 3~~ **Done (session 6):** tagged `v0.1.0` and merged into `main`. The README GIF
@@ -218,6 +223,14 @@ version 1 line (fixes, and the verification still owed). Scope is not decided: s
    Parked at Karthi's request.
 6. Opened the version 2 line: branch `version-2`, repo topics added, scope candidates written into
    the roadmap.
+7. Researched whether pictures can sync clips when sound cannot (`docs/RELATED_WORK.md`, "Syncing
+   without sound"): light events can reach sub-millisecond with no shared view, geometry ~45 ms
+   median but GPU-hours and an unlicensed codebase, a visible clock is the only route to absolute
+   time, and nothing places clips that never overlap in time.
+8. Built the camera map on `v2-camera-map` with two agents: `sound_events.py` (find and time the
+   sounds several clips heard), `positions.py` (multilateration, refusals, doubt), `scenefold map`,
+   and the viewer's "Where they stood" tab (map, or distance circles when it refuses). 43 new tests;
+   525 pass in all.
 
 
 ### Session 1: 2026-09-17, Windows laptop (~5 hours)

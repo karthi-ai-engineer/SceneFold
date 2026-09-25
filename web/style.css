@@ -207,3 +207,15 @@ td.name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
   .clock { margin-inline: 4px; width: 100%; order: -1; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Where the phones stood: a top-down plan, or rings when the sounds cannot place them. */
+.map { width: 100%; height: auto; background: var(--panel, #14141a); border-radius: 8px; }
+.map text { fill: var(--text, #e8e8ea); font-size: 13px; }
+.map .spread { opacity: 0.18; }
+.map .phone { stroke: rgba(0, 0, 0, 0.45); stroke-width: 1.5; }
+.map .sound path { stroke: var(--muted, #8f8e88); stroke-width: 2; }
+.map .scale path { stroke: var(--muted, #8f8e88); stroke-width: 2; }
+.map .scale text { fill: var(--muted, #8f8e88); font-size: 12px; }
+.map .ring { fill: none; stroke-width: 2; opacity: 0.8; }
+.map .source { fill: var(--muted, #8f8e88); }
+.map .source-label { fill: var(--muted, #8f8e88); font-size: 12px; }

@@ -732,6 +732,24 @@ until version 2 replaces it.
 first version 2 phase should be whichever of these makes the project reach people, since version 1
 already works for anyone who can clone a repo.
 
+### Version 2, first piece: the camera map (2026-09-25)
+
+Karthi's idea: the leftover per-camera delay is distance, so with enough cameras the phones can be
+placed on a map. Built as `scenefold map` (`src/scenefold/sound_events.py` finds the sounds,
+`src/scenefold/positions.py` solves the map, the viewer draws it under "Where they stood").
+
+- Sounds several clips heard are found and timed to 0.03 ms on drawn clips (0.14 ms with drift).
+- Cameras, sound positions and sound instants are solved together; the head start sync absorbed is
+  either added back from `heard_late_s` or solved as an extra unknown per camera, which needs more
+  sounds (`cameras x sounds >= 3 x cameras + 3 x sounds - 4`).
+- Drawn audio, five phones and six claps: every phone within **1 cm**. Exact arrivals with noise:
+  1.8 m out at 2 ms, 3.8 m at 5 ms, each with its own doubt from leaving one sound out at a time.
+- Refuses when one place made all the sounds, when there is not enough to go on, or when a camera
+  cannot be pinned down; the viewer then shows distance circles instead.
+- **Not tried on real footage.** Echo, moving phones and sound bending round obstacles all break the
+  straight-line assumption, and a real event may never offer sounds from enough different places.
+- Left: try it on the Coldplay and Jiku events, and show the map beside the viewer's own clips.
+
 ## Research notes
 
 Checked 2026-09-17. Versions, model names, and prices change quickly, so recheck at the start of each phase.

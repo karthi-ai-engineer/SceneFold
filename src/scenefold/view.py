@@ -10,6 +10,7 @@
     GET /api/cut                data/<event>/cut.json, the shot list `scenefold cut` wrote
     GET /api/story              data/<event>/story.json, the cited account `scenefold story` wrote
     GET /api/people             data/<event>/people.json, who `scenefold identify` matched up
+    GET /api/positions          data/<event>/positions.json, where `scenefold map` put the phones
     GET /api/events?from=&to=   what `scenefold fuse` knows happened in that stretch of the shared
                                 clock (seconds; the whole event when they are left out), each
                                 moment with its evidence and any conflict
@@ -42,6 +43,7 @@ from scenefold.cut import CUT_NAME, FILM_NAME
 from scenefold.identity import PEOPLE_NAME
 from scenefold.knowledge import KNOWLEDGE_NAME, Event, events_between
 from scenefold.manifest import MANIFEST_NAME, ManifestError, load_manifest, normalize_event_id
+from scenefold.positions import POSITIONS_NAME
 from scenefold.story import STORY_NAME
 from scenefold.timeline import TIMELINE_NAME, TimelineError, load_timeline
 
@@ -67,6 +69,7 @@ API_FILES = {  # route -> (file in the event folder, the command that writes it)
     "/api/cut": (CUT_NAME, "scenefold cut"),
     "/api/story": (STORY_NAME, "scenefold story"),
     "/api/people": (PEOPLE_NAME, "scenefold identify"),
+    "/api/positions": (POSITIONS_NAME, "scenefold map"),
 }
 # The film is one video of the whole event, not one clip, so it gets a name of its own.
 FILM_PATH = "/film.mp4"

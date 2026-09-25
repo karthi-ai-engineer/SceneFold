@@ -10,6 +10,7 @@ import * as sync from "./sync.js";
 import { loadDisagreements } from "./disagreements.js";
 import { loadPeople } from "./people.js";
 import { renderReport } from "./report.js";
+import { renderMap } from "./map.js";
 import { loadFilm, startFilm } from "./film.js";
 import { loadStory, openStory } from "./story.js";
 
@@ -19,7 +20,7 @@ export const OTHER = "#8f8e88";
 // After a start or jump, videos begin at slightly different moments and catch up within about a
 // second (measured); the health table reports how well they then stay together.
 const START_GRACE_MS = 1000;
-const TABS = ["viewer", "story", "report", "film"];
+const TABS = ["viewer", "story", "report", "film", "map"];
 const FIRST_LEAD_S = 0.3; // a jump while playing aims this far ahead until the clip's own is known
 
 const $ = (id) => document.getElementById(id);
@@ -518,6 +519,10 @@ async function boot() {
     $("tiles").innerHTML = `<p class="muted">No clip could be placed on the clock. See the sync report.</p>`;
   }
   renderReport(timeline, colorOf, OTHER);
+  // The map is optional: an event only has one once `scenefold map` has run.
+  fetchJson("/api/positions")
+    .then((positions) => renderMap(positions, colorOf, OTHER))
+    .catch(() => renderMap(null, colorOf, OTHER));
   const watchAt = (t) => {
     showTab("viewer");
     seekTo(t);

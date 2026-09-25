@@ -18,6 +18,7 @@
       <button role="tab" id="tab-story" aria-selected="false" aria-controls="story">What happened</button>
       <button role="tab" id="tab-report" aria-selected="false" aria-controls="report">Sync report</button>
       <button role="tab" id="tab-film" aria-selected="false" aria-controls="film">Film</button>
+      <button role="tab" id="tab-map" aria-selected="false" aria-controls="map">Where they stood</button>
     </nav>
   </header>
 
@@ -97,6 +98,16 @@
         <p id="people-doubt" class="doubt small" hidden></p>
         <ul id="people-list" class="people-list"></ul>
         <p id="people-more" class="muted small" hidden></p>
+      </div>
+    </section>
+
+    <section id="map" role="tabpanel" aria-labelledby="tab-map" hidden>
+      <div id="map-summary" class="summary"></div>
+      <div id="map-panel">
+        <figure class="graph-card">
+          <figcaption id="map-note" class="muted small"></figcaption>
+          <div id="map-drawing"></div>
+        </figure>
       </div>
     </section>
 
