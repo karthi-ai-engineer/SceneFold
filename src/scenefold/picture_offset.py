@@ -37,6 +37,8 @@ MIN_FAR_LAGS = 10  # ...and only when there are this many of them to judge again
 # Measured: a pattern that merely repeats (video keyframes a second apart) leads by at most 0.50,
 # while real matches lead by 0.84-2.71 on drawn clips and 0.60-1.97 on two stadium concerts.
 MIN_LEAD = 0.6
+# Grey levels a picture must actually move before it is worth matching at all (see match_pictures).
+MIN_SIGNAL = 0.05
 SOUND_M_PER_S = 343.0
 
 
@@ -72,6 +74,14 @@ def changes(curve: np.ndarray, fps: float = FPS) -> np.ndarray:
     return quick / (quick.std() or 1.0)
 
 
+def _movement(curve: np.ndarray, fps: float) -> float:
+    """How much the picture really moves, in grey levels, once slow drifts are taken out."""
+    window = max(3, int(SMOOTH_S * fps) | 1)
+    padded = np.pad(curve, window // 2, mode="edge")
+    slow = np.convolve(padded, np.ones(window) / window, mode="valid")[: len(curve)]
+    return float((curve - slow).std())
+
+
 def match_pictures(
     a: np.ndarray,
     b: np.ndarray,
@@ -90,6 +100,12 @@ def match_pictures(
     """
     if drift_ppm:
         b = _stretch(b, drift_ppm)
+    # A picture that never changes carries nothing to match. Encoding still leaves a trace of noise
+    # on it, `changes` scales that trace up to the size of a real signal, and two traces can then
+    # line up by luck. So the raw curves are checked first: a steadily lit room moves 0.00 grey
+    # levels here and a few thousandths on other machines, while a lighting show moves about 19.
+    if min(_movement(a, fps), _movement(b, fps)) < MIN_SIGNAL:
+        return None
     left, right = changes(a, fps), changes(b, fps)
     lags = np.arange(-(len(right) - 1), len(left))
     overlap = np.minimum(len(left), lags + len(right)) - np.maximum(0, lags)
