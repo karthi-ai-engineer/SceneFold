@@ -703,6 +703,35 @@ The README says so in the open, with the numbers, rather than in a footnote.
 
 ---
 
+---
+
+## Version 2 (started 2026-09-25)
+
+Version 1 answered: *many phone videos of one event, folded into one synced, cited picture of what
+happened.* It is built end to end and measured where it can measure itself.
+
+**How the two lines run.** `main` is the version 1 line: fixes, and the verification it still owes
+(the hand-labelled event that would let `v0.5.0` and `v1.0.0` be tagged). `version-2` is the
+integration branch for version 2; its phase branches start from `version-2` and merge back into it,
+CI green, same as before. `version-2` takes `main`'s fixes by merge, never the other way round,
+until version 2 replaces it.
+
+**Candidates, and where they come from.**
+
+| Candidate | Why | From |
+|---|---|---|
+| **Anyone can install it** — PyPI package, `web/` and the demo inside it, `scenefold doctor`, optional FFmpeg wheel | Today it runs only from a git checkout; nothing else reaches people | this repo |
+| **Clips with no usable sound** placed by their pictures alone | The brief's silent-CCTV case; `picture_offset.py` already measures light, but only corrects clips the sound placed | brief §13 |
+| **Several groups at once** — one night, one moment, one room per group, not only the largest | Real uploads mix nights and moments; today the rest are reported, not placed | ROADMAP Phase 2 |
+| **Edited uploads** — detect cuts inside a clip and place each piece | Most footage people send has been trimmed or joined | ROADMAP Phase 2 |
+| **A cloud model option** for the understanding steps, face blurring first | A laptop without a GPU cannot run `observe`; this is the brief's own privacy-first design | brief §7, §9 |
+| **Cameras that never overlap** — place them by route and travel time | The brief's parked case, and the hardest one | brief §13 |
+| **Evidence integrity** — audit log, tamper-evident records, human review | Needed before anyone could use this seriously; the brief parks it for good reason | brief §13 |
+
+**Not decided yet.** Version 2's scope is Karthi's call; this table is the menu, not the plan. The
+first version 2 phase should be whichever of these makes the project reach people, since version 1
+already works for anyone who can clone a repo.
+
 ## Research notes
 
 Checked 2026-09-17. Versions, model names, and prices change quickly, so recheck at the start of each phase.

@@ -67,7 +67,7 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 
 ---
 
-## Where things stand (session 11, 2026-09-21)
+## Where things stand (session 12, 2026-09-25)
 
 | Phase | Status | Where |
 |---|---|---|
@@ -95,6 +95,10 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
   - Download (portrait clips need the width limit):
     `uv run --no-project --with yt-dlp yt-dlp -f "bv*[height<=720][width<=1280]+ba[ext=m4a]/bv*[width<=720]+ba" --merge-output-format mp4 -o "data/_downloads/youtube/coldplay-fix-you/%(channel).24B %(id)s.%(ext)s" <urls>`
   - Then `scenefold ingest coldplay-jan25 <its 6 files>`, `sync`, `view`. Both pass `check_viewer.py`.
+
+**Version 2 started (2026-09-25).** Work now happens on the `version-2` branch; `main` stays the
+version 1 line (fixes, and the verification still owed). Scope is not decided: see `docs/ROADMAP.md`,
+"Version 2", for the candidates.
 
 ### Next steps, in order
 
@@ -198,6 +202,23 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
 ---
 
 ## Session log
+
+### Session 12: 2026-09-25, Windows laptop
+
+1. Caught this laptop up: `main` pulled (60 commits from the Predator), dead branch deleted,
+   dependencies synced, 482 Python tests + 15 viewer tests pass here.
+2. Corrected the stale next-steps list (the picture placement was already done in Phase 2b).
+3. Rewrote the README: 632 lines down to 250, GIF first, a table of what each command gives you,
+   the measured numbers in one table, install and command lists folded into collapsibles. The
+   per-stage detail moved unchanged to `docs/HOW_IT_WORKS.md`.
+4. Added the animated logo (`docs/scenefold-logo.gif`, from Karthi's MP4, plays once and rests on
+   the finished mark; source kept as `docs/scenefold-logo.mp4`, regeneration command in the commit).
+5. Checked PyPI: the name `scenefold` is free. Found two blockers for a pip release — `web/` and
+   `tools/` are not inside the wheel, so `scenefold view` and the demo would not work when installed.
+   Parked at Karthi's request.
+6. Opened the version 2 line: branch `version-2`, repo topics added, scope candidates written into
+   the roadmap.
+
 
 ### Session 1: 2026-09-17, Windows laptop (~5 hours)
 
