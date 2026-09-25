@@ -208,14 +208,35 @@ td.name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
-/* Where the phones stood: a top-down plan, or rings when the sounds cannot place them. */
-.map { width: 100%; height: auto; background: var(--panel, #14141a); border-radius: 8px; }
+/* Where the phones stood: a top-down plan, or rings when the sounds cannot place them.
+   Names live in the list beside the drawing; the drawing carries only numbers. */
+.map-wrap { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+.map { flex: 1 1 380px; max-width: 620px; height: auto; background: var(--panel, #14141a); border-radius: 8px; }
 .map text { fill: var(--text, #e8e8ea); font-size: 13px; }
-.map .spread { opacity: 0.18; }
+.map .spread { opacity: 0.16; }
 .map .phone { stroke: rgba(0, 0, 0, 0.45); stroke-width: 1.5; }
+.map .pin { font-size: 11px; font-weight: 600; fill: #10101a; text-anchor: middle; }
+.map .pin-dot { stroke: rgba(0, 0, 0, 0.45); stroke-width: 1.5; }
 .map .sound path { stroke: var(--muted, #8f8e88); stroke-width: 2; }
 .map .scale path { stroke: var(--muted, #8f8e88); stroke-width: 2; }
 .map .scale text { fill: var(--muted, #8f8e88); font-size: 12px; }
-.map .ring { fill: none; stroke-width: 2; opacity: 0.8; }
+.map .ring { fill: none; stroke-width: 2; opacity: 0.75; }
+.map .ring-label { font-size: 12px; fill: var(--text, #e8e8ea); }
 .map .source { fill: var(--muted, #8f8e88); }
 .map .source-label { fill: var(--muted, #8f8e88); font-size: 12px; }
+
+.map-legend { flex: 1 1 240px; list-style: none; margin: 0; padding: 0; }
+.map-legend li {
+  display: grid;
+  grid-template-columns: 16px 12px 1fr auto;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.map-legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.map-legend .who { font-weight: 500; overflow-wrap: anywhere; }
+.map-legend .what { text-align: right; white-space: nowrap; color: var(--text, #e8e8ea); }
+.map-legend .aside { display: block; color: var(--muted, #8f8e88); font-size: 12px; }
+.map-legend .why { grid-column: 3 / -1; color: var(--muted, #8f8e88); font-size: 12px; }
+.map-legend .pin-no { color: var(--muted, #8f8e88); font-size: 11px; }

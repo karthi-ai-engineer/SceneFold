@@ -457,6 +457,10 @@ function bindControls() {
   $("audio").addEventListener("change", (event) => setAudio(event.target.value || null));
   $("align").addEventListener("change", (event) => setAlign(event.target.value));
   for (const tab of TABS) $(`tab-${tab}`).addEventListener("click", () => showTab(tab));
+  // #map, #report and the rest open that tab straight away, so a link (or a screenshot) can aim at one
+  const fromHash = () => TABS.includes(location.hash.slice(1)) && showTab(location.hash.slice(1));
+  window.addEventListener("hashchange", fromHash);
+  fromHash();
   document.addEventListener("keydown", (event) => {
     if (event.target.closest("select, input, textarea") || event.ctrlKey || event.metaKey || event.altKey) return;
     if (!$("film").hidden) return; // the film has its own controls; these keys drive the clips

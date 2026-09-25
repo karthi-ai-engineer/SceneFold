@@ -39,6 +39,7 @@ class Camera:
     """One imaginary phone: where it stands, what it frames, and how its clock behaves."""
 
     name: str
+    at: tuple[float, float]  # where it stands in metres, with the stage at (0, 0)
     start_s: float
     seconds: float
     crop: tuple[int, int, int, int]  # width, height, x, y in the show
@@ -51,12 +52,72 @@ class Camera:
 
 
 CAMERAS = (
-    Camera("wide-stage", 0.0, 95.0, (1280, 720, 0, 0), (1280, 720), 120, snr_db=34.0),
-    Camera("front-row", 21.5, 85.0, (860, 484, 210, 150), (1280, 720), -240, 0.06, 1.2, 28.0, 0.25),
-    Camera("left-portrait", 47.2, 70.0, (405, 720, 430, 0), (406, 720), 310, -0.04, 0.8, 26.0, 0.4),
+    Camera("wide-stage", (2.0, 12.0), 0.0, 95.0, (1280, 720, 0, 0), (1280, 720), 120, snr_db=34.0),
     Camera(
-        "back-of-crowd", 69.4, 50.0, (1180, 664, 50, 30), (1280, 720), -60, -0.09, 0.6, 22.0, 0.5
+        "front-row",
+        (-6.0, 5.0),
+        21.5,
+        85.0,
+        (860, 484, 210, 150),
+        (1280, 720),
+        -240,
+        0.06,
+        1.2,
+        28.0,
+        0.25,
     ),
+    Camera(
+        "left-portrait",
+        (-14.0, 18.0),
+        47.2,
+        70.0,
+        (405, 720, 430, 0),
+        (406, 720),
+        310,
+        -0.04,
+        0.8,
+        26.0,
+        0.4,
+    ),
+    Camera(
+        "back-of-crowd",
+        (9.0, 34.0),
+        69.4,
+        50.0,
+        (1180, 664, 50, 30),
+        (1280, 720),
+        -60,
+        -0.09,
+        0.6,
+        22.0,
+        0.5,
+    ),
+)
+
+# Sounds made out in the crowd, away from the stage: claps from a different place each time. Sound
+# needs 2.9 ms a metre, so each phone hears each clap at its own moment, and `scenefold map` works
+# backwards from those moments to where the phones stood. One place alone could only give circles.
+STAGE = (0.0, 0.0)
+CLAPS = (
+    # Early on, when only the first phones are recording.
+    ((-12.0, 3.0), 11.0),
+    ((14.0, 9.0), 24.0),
+    ((-3.0, 28.0), 38.0),
+    ((17.0, 30.0), 52.0),
+    ((-16.0, 22.0), 66.0),
+    # All four phones record between 69.4 s and 95 s, and only sounds every phone heard can place
+    # them: each one gives four arrivals but costs three unknowns of its own. So most claps happen
+    # here, each from a different spot in the crowd.
+    ((4.0, 6.0), 71.0),
+    ((20.0, 20.0), 73.5),
+    ((-18.0, 9.0), 76.0),
+    ((8.0, 31.0), 78.5),
+    ((-9.0, 16.0), 81.0),
+    ((22.0, 4.0), 83.5),
+    ((-2.0, 37.0), 86.0),
+    ((13.0, 24.0), 88.5),
+    ((-20.0, 30.0), 91.0),
+    ((1.0, 19.0), 93.5),
 )
 
 
@@ -118,8 +179,14 @@ def make_show(folder: Path, seconds: float) -> Path:
 
 def film(show: Path, sound: np.ndarray, camera: Camera, folder: Path) -> Path:
     """One phone's clip: its window of the show, its framing, its clock."""
+    at_this_spot = synth.heard_at(
+        camera.at,
+        [(STAGE, sound)]
+        + [(place, synth.claps(len(sound) / synth.RATE, (when,))) for place, when in CLAPS],
+        seed=zlib.crc32(camera.name.encode()) % 997,
+    )
     heard = synth.record(
-        sound,
+        at_this_spot,
         synth.Phone(
             start_s=camera.start_s,
             seconds=camera.seconds,
@@ -178,6 +245,13 @@ def main() -> int:
     data = ["--data-dir", str(args.data_dir)]
     if cli.main(["ingest", args.event, *clips, *data]) or cli.main(["sync", args.event, *data]):
         return 1
+    if cli.main(["map", args.event, *data]):
+        return 1
+    print(
+        "\nWhere they really stood: "
+        + ", ".join(f"{c.name} ({c.at[0]:.0f}, {c.at[1]:.0f}) m" for c in CAMERAS)
+        + "\n(the map has no compass and may come out turned or mirrored; distances are the test)"
+    )
     print(f"\nWatch it: uv run scenefold view {args.event}")
     return 0
 
