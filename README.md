@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="docs/scenefold.png" alt="" width="170">
+  <img src="docs/scenefold-logo.gif" alt="Scenefold: five lines folding into one" width="340">
 </p>
-
-<h1 align="center">Scenefold</h1>
 
 <p align="center">
   <b>Many people film the same moment.<br>
