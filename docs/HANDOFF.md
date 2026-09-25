@@ -105,11 +105,14 @@ node --test web/tests/sync.test.mjs  # the viewer's timing rules (needs Node 18+
    software anyway), and the picture check replaced the home clap recording. The Nexus S check
    failed for want of a signal: Jiku's lighting is steady, so no pair's brightness matched clearly.
    It stays open; it would need a visible, audible moment (a hit or a light cue) found by hand.
-2. **Then: place the pictures, not the sound arrival** (ROADMAP Phase 2, "Next in sync"). The
-   picture check found phones up to 423 ms apart in when they heard the same stadium show, which is
-   how far they stood from the speakers (2.9 ms per metre). `tools/check_pictures.py` already
-   measures it; the work is to fold it into sync, `timeline.json`, and the viewer, and to keep
-   sound alignment available for listening.
+2. ~~Place the pictures, not the sound arrival~~ **Done (Phase 2b, 2026-09-20):** sync measures each
+   phone's distance from the sound, `timeline.json` carries `heard_late_s`, and the viewer's "Line up"
+   control holds the pictures together. See ROADMAP "Phase 2b".
+2b. **The one thing blocking both remaining tags (`v0.5.0`, `v1.0.0`): a hand-labelled event.**
+   Everything through Phase 9 is built; nothing has been checked against footage somebody knows.
+   Needed: one short real event labelled by hand (what happened and when, who wore what), then
+   measured numbers for story faithfulness, event recall, disagreement precision, and identity
+   accuracy. Running it needs a machine with the local model (Ollama), so the Predator.
 3. ~~Reject pairs whose windows disagree~~ **Done (session 5):** `partial_match` (ROADMAP Phase 2).
    Watch it on new footage: a true pair with a moving phone or an edit can fall under 0.9 too.
 4. Later (not Phase 3): place several groups (one per night or moment) instead of only the main
