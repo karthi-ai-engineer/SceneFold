@@ -1,23 +1,87 @@
 <p align="center">
-  <img src="docs/scenefold.png" alt="Scenefold logo" width="240">
+  <img src="docs/scenefold.png" alt="" width="170">
 </p>
 
-# Scenefold
+<h1 align="center">Scenefold</h1>
 
-**Many people film the same moment. Scenefold folds their videos into one synced, understandable,
-and trustworthy picture of what happened.**
+<p align="center">
+  <b>Many people film the same moment.<br>
+  Scenefold folds their videos into one synced, understandable, trustworthy picture of what happened.</b>
+</p>
 
-[![CI](https://github.com/karthi-ai-engineer/SceneFold/actions/workflows/ci.yml/badge.svg)](https://github.com/karthi-ai-engineer/SceneFold/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+<p align="center">
+  <a href="https://github.com/karthi-ai-engineer/SceneFold/actions/workflows/ci.yml"><img src="https://github.com/karthi-ai-engineer/SceneFold/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/python-3.13-blue.svg" alt="Python 3.13">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/runs-on%20your%20machine-green.svg" alt="Runs locally">
+</p>
 
-## Status
+<p align="center">
+  <img src="docs/viewer.gif" alt="Four clips of one event playing together on one timeline" width="760">
+</p>
 
-The whole chain works end to end, on your own machine and with nothing uploaded anywhere:
-**ingest → sync → watch and listen → who is in it → merge into events → a cited account → a film.**
-No `v1.0.0` yet, and the reason is in [what it has been measured at](#what-it-has-been-measured-at):
-the parts that check *themselves* are measured, and the parts that would need a person watching
-footage they already know are not. See the [roadmap](docs/ROADMAP.md) and the
-[project brief](docs/PROJECT_BRIEF.md).
+<p align="center">
+  <sub>Four clips that started at different times, on different clocks, played together on one clock.<br>
+  Nobody is filmed here: the event is drawn by <code>tools/demo_event.py</code>, so you can make it yourself in a minute.</sub>
+</p>
+
+---
+
+## What it does
+
+| | You run | You get |
+|---|---|---|
+| **Line them up** | `scenefold sync` | Every clip on one clock, to within milliseconds — measured against published ground truth |
+| **Watch them together** | `scenefold view` | All angles playing at once in your browser, every picture within half a frame |
+| **Find out what happened** | `scenefold observe` → `fuse` | Each clip watched on its own, then merged into one account per moment |
+| **Read it, question it** | `scenefold story` / `ask` | Sentences that cite the clip and second they came from, checked in code |
+| **See the disagreements** | in the viewer | Where the cameras don't agree, kept visible instead of smoothed away |
+| **Get a film** | `scenefold cut` | One edit of the best angles, with a stated reason for every shot |
+
+Nothing is uploaded. Every step runs on your own machine, and the AI steps use a local model.
+
+## Try it in two minutes
+
+You need [uv](https://docs.astral.sh/uv/) and [FFmpeg](https://ffmpeg.org/) ([install commands](#install)).
+
+```sh
+git clone https://github.com/karthi-ai-engineer/SceneFold.git
+cd SceneFold
+uv sync
+uv run python tools/demo_event.py    # draws an imaginary event, then ingests and syncs it
+uv run scenefold view demo           # opens the viewer above at http://127.0.0.1:8765
+```
+
+## With your own videos
+
+```sh
+uv run scenefold ingest my-event path/to/videos   # copies originals, makes working copies
+uv run scenefold sync my-event                    # puts them all on one clock
+uv run scenefold view my-event                    # watch every angle together
+uv run scenefold cut my-event                     # render one film of the best angles
+```
+
+Then, if you want it to understand the footage, with a model on your own computer
+([Ollama](https://ollama.com), no account, no cost):
+
+```sh
+ollama pull qwen3.5:4b
+uv run scenefold observe my-event                 # what each clip shows and what was said
+uv run scenefold fuse my-event                    # merge the clips into one account per moment
+uv run scenefold story my-event                   # the account, every sentence citing the footage
+uv run scenefold ask my-event "what happened at the end?"
+```
+
+A story reads like this, and each line names the clips behind it:
+
+```
+  2:48.2  A performer stands on a circular stage while a massive audience holds up numerous
+          red lights creating a dense field of light that occasionally dims, though one
+          camera caught nothing here [1]. (the clips disagree here)
+          from 34b92d86, 60780912
+```
+
+## How the pieces fit
 
 ```
  phone videos ─┬─▶ ingest ──▶ sync ──▶ VIEWER      every angle on one clock, within half a frame
@@ -33,330 +97,39 @@ footage they already know are not. See the [roadmap](docs/ROADMAP.md) and the
                             └──▶ story / ask ──▶ ACCOUNT   every sentence citing the footage
 ```
 
-Everything after `sync` is optional: each step reads what the ones before it wrote, and the viewer,
-the film and the account each work with whatever exists.
-
-![The viewer playing four clips of one event in sync](docs/viewer.gif)
-
-Four clips that started at different times, each with its own framing and its own clock, played
-together on one timeline. The clock burnt into the picture is the same in every tile, and each clip
-stays within a frame of where the shared clock wants it. Nobody is filmed: the clips are drawn by
-`tools/demo_event.py`, so you can make this event yourself in a minute.
+Each step reads what the earlier ones wrote, so everything after `sync` is optional.
+**[How it works, step by step →](docs/HOW_IT_WORKS.md)**
 
 ## What it has been measured at
 
-Two real events and one drawn one. `jiku-saf-long` is six phones at a stage performance with
-published ground truth; `coldplay-jan26` is five YouTube uploads of one stadium concert; `demo` is
-drawn by `tools/demo_event.py`, so its answers are known by construction.
+On six phones at a real performance with published ground truth (`jiku-saf-long`), five YouTube
+uploads of one stadium concert (`coldplay-jan26`), and a drawn event whose answers are known.
 
-| What | Measured | On what |
-|---|---|---|
-| Sync error against ground truth | 2.1 ms median, 6.4 ms worst, every moment within a frame | `jiku-saf-long`, 5 of 6 phones, 187 measurements |
-| …and the sixth phone | 70–110 ms out, cause unresolved, [written up](docs/ROADMAP.md) rather than hidden | the Nexus S, in both subsets |
-| Against other tools | best of four; `audio-offset-finder` 6.4/30.4 ms, `audalign` 14.6/47.9 ms | same clips, same scoring |
-| Viewer drift | every tile within half a frame of the shared clock | `tools/check_viewer.py`, headless Chrome |
-| Moments corroborated | 219 of 298 where all four filmed one show; 118 of 311 where phones pointed different ways | `demo` / `coldplay-jan26` |
-| Disagreements found | 91, of which 74 left unresolved because no camera had the better view | `coldplay-jan26` |
-| Story citations | 15 sentences, 0 dropped, 4 flagged as disputed — each checked in code | `coldplay-jan26` |
-| People matched across angles | 16 of 26, 7 beyond doubt, 0 split inside a clip | `jiku-saf-long`, 6 angles |
-| Cost per event | £0, and nothing leaves the machine: 20 min of footage takes 4.6 min to watch and 8.5 min to find people in | `jiku-saf-long`, `qwen3.5:4b` through Ollama, one laptop GPU |
+| What | Measured |
+|---|---|
+| **Sync error** vs. published ground truth | **2.1 ms** median, 6.4 ms worst — every moment inside one frame |
+| Against other tools, same clips | **Best of four.** audio-offset-finder 6.4/30.4 ms, audalign 14.6/47.9 ms |
+| One phone out of six | 70–110 ms out, cause unresolved — [written up](docs/ROADMAP.md), not hidden |
+| **Viewer drift** | Every tile within **half a frame** of the shared clock, in headless Chrome |
+| Moments seen by more than one phone | 219 of 298 (drawn event); 118 of 311 (concert, phones pointing different ways) |
+| Disagreements found | 91, of which 74 left **unresolved** because no camera had the better view |
+| Story citations | 15 sentences, 0 dropped, 4 flagged as disputed — each checked in code |
+| People matched across angles | 16 of 26, 7 beyond doubt, 0 split inside a clip |
+| Cost per event | **£0**, nothing leaves the machine. 20 min of footage: 4.6 min to watch, 8.5 min to find people |
 
-**What is not measured, and cannot be from this footage.** Whether a sentence that cites a real
-moment describes it *truthfully*. Whether the 91 disagreements are real ones. Whether a matched
-person is the *right* person. All three need an event where somebody already knows what happened
-and who was there — which is why `v0.5.0` and `v1.0.0` are both still untagged. See
-[Responsible use](#responsible-use) for what that test event should look like.
+**What is not measured.** Whether a sentence that cites a real moment describes it *truthfully*,
+whether those 91 disagreements are real, and whether a matched person is the *right* person. All
+three need an event where somebody already knows what happened, which is why `v0.5.0` and `v1.0.0`
+are still untagged. [How you could help →](#the-test-event-this-project-still-needs)
 
-## What ingest does
+---
 
-`scenefold ingest <event> <videos or folders>` prepares phone videos of one event for the later stages:
+<a name="install"></a>
+<details>
+<summary><b>Install</b> (Windows, macOS, Linux)</summary>
 
-- Keeps an untouched, read-only copy of every original.
-- Makes a working copy of each video: 720p, a steady 30 fps, upright, HDR converted to normal colors,
-  plus a mono 48 kHz WAV of its sound. Picture and sound start at exactly the same instant and stay
-  together, even on phones whose sound clock disagrees with the file's timestamps.
-- Records each clip in `manifest.json` as `ok`, `warning` (for example no audio, very short, or a
-  cut-off file) or `failed`, always with the reason.
-- Skips files that are not videos and videos it has already processed. One bad file never stops the rest.
-
-```
-data/<event>/
-├─ originals/      your videos, untouched and read-only
-├─ proxies/        working copies (<clip>.mp4) and their sound (<clip>.wav)
-├─ manifest.json   what each clip is, where its files are, and any problems
-├─ timeline.json   where each clip sits on the shared clock          (sync)
-├─ observations/   what each clip shows, one file per clip           (observe)
-└─ cut.json, cut.mp4   the shot list, with a reason each, and the film  (cut)
-```
-
-## What sync does
-
-`scenefold sync <event>` puts the event's clips on one master timeline by comparing their sound. No
-speech recognition is involved: music, claps, cheering, and background talk all help.
-
-- Compares every pair of clips that have sound, and scores how clearly each match beats the next-best one.
-- Measures and cancels clock drift: phone audio clocks run a few to a few hundred parts per million
-  fast or slow, which adds up to tens of milliseconds over a few minutes.
-- Solves all pairs together and drops pairs that disagree with the rest, so one bad match can't
-  move the other clips. Clips that never overlap are placed through the clips between them.
-- Matches the placed clips again by their pictures, which says how far each phone stood from the
-  sound (below). Skip it with `--sound-only`; it is the slow part, because it reads every picture.
-- Writes `timeline.json` with each clip's offset, drift, confidence and distance, every pair
-  measurement, and the reason for any clip it could not place. A clip is never forced onto the
-  timeline.
-
-**Measured accuracy.** On real phone clips of a live event from the
-[Jiku dataset](https://traces.cs.umass.edu/docs/traces/multimedia/), sync agrees with its published
-ground truth within 6.4 ms when the clips overlap for about three minutes, and within 26 ms for
-80-second overlaps, for five of six phones. The sixth (a Nexus S) differs by 70–110 ms; which side is
-right is not settled yet. On the same clips it matched
-[audio-offset-finder](https://github.com/bbc/audio-offset-finder) and
-[audalign](https://github.com/benfmiller/audalign) over 80 seconds and beat both over three minutes,
-where their lack of clock-drift handling shows (`tools/baselines.py`).
-
-**Sound takes time to arrive, so the pictures are matched too.** Sound travels about one metre
-every 2.9 ms, so a phone further from the speakers hears everything late — and sync, which listens,
-ends up putting its picture ahead of everybody else's by exactly that much: its flash comes first
-on the shared clock. At a stadium concert the phones were up to 423 ms apart in when they heard the
-music, twelve frames of visible mismatch. So the placed clips are matched a second time by how
-their brightness changes (stage lighting, flashes), which gives each clip a `heard_late_s`: how
-much later than the nearest clip that phone heard the event.
-
-- `scenefold sync` reports it as a distance, and the viewer can line up the pictures instead of the
-  sound — what you want when watching several angles at once.
-- It needs light that changes together. Where the lighting is steady it says it cannot tell instead
-  of guessing: a match is believed only when it stands clear of matches at unrelated times *and*
-  leads every other moment it could have matched, since anything that repeats — stage lighting on
-  a beat, or the mark video encoding leaves on every keyframe — matches at every repeat.
-- Accuracy: on drawn clips where the true answer is zero it reads within 17 ms, half a frame.
-
-**Different nights, same song.** Bands play along to backing tracks that are identical every night,
-so clips of the same song from two shows can match on the music alone. Sync checks that a match
-holds all through the overlap (the singing, talk, and crowd must line up too) and sets aside pairs
-that match only in parts, so clips from another night are reported instead of placed. Only the
-largest group is placed for now.
-
-**Known limits.** Sound that repeats exactly, like the same recorded song played twice, can match
-the wrong place when only two clips share it. A phone that moves while filming shifts its sound by
-about 3 ms per metre, and one distance per clip cannot follow it. Edited uploads (with cuts) can't
-be placed as one clip. Clips without usable sound can't be placed yet.
-
-`scenefold evaluate <event> <truth.json>` measures sync error against ground truth: moments such as
-claps, with their time in each clip that caught them.
-
-## What fusing does
-
-`scenefold fuse <event>` is where the clips stop being separate. Every clip's timed moments go onto
-the shared clock, and the ones that land together are taken to be the same thing happening:
-
-```
-Event coldplay-jan26: 311 moments on the shared clock, 118 of them caught by more than one clip
-Where the clips disagree: 69 (62 left unresolved, which is the honest answer when no camera had a
-clearly better view)
-    198.51 s  both  seen by 5 clips
-      A large outdoor concert at night features a brightly lit stage with dynamic lighting effects
-```
-
-- **Corroboration is the point.** Five phones catching one instant is far stronger evidence than
-  one phone describing it. On clips that all film the same thing, 219 of 298 moments were caught by
-  more than one camera; on real concert footage, where phones point different ways, 118 of 311.
-- **Disagreements are found, not smoothed over.** When two clips agree something happened and a
-  third with as good a view caught nothing, that is recorded with its type and either a resolution
-  or an honest "unresolved".
-- **Resolved by the better view, never by majority.** Three phones behind a pillar do not outvote
-  the one with a clear line of sight. When the camera with the best view is the one that missed it,
-  that stays unresolved — it is exactly the case where the thing may not have happened at all.
-- **The accounts are read against each other**, which arithmetic cannot do: the model on your
-  computer is shown two descriptions of one moment and asked whether both could be true at that
-  instant. Differences of wording, detail or focus are not disagreements; a dark empty stage
-  against a lit one with a band on it is. The same pair of sentences is only read once however
-  many moments they cover, so a five-minute event costs about fifty readings, not three hundred.
-  Skip it with `--no-reading`.
-- Everything lands in `knowledge.sqlite`, which a later phase can ask questions of, and every claim
-  carries the clip it came from.
-
-## What the story does
-
-`scenefold story <event>` writes a short account of what happened, from the event store and
-nothing else:
-
-```
-  0:33.9  A large concert at night, the audience holding up glowing lights, the stage shifting
-          from bright white beams to warm yellow-green.
-          from f098e4bb
-  2:48.2  A performer stands on a circular stage while the audience holds up red lights.
-          (the clips disagree here)
-          from 34b92d86, f098e4bb
-```
-
-Every sentence ends up pointing at a moment, and the citations are checked **in code, not by the
-model**: the moment has to exist in the store, and a clip that saw it has to have been filming at
-that time. A sentence that fails is removed and the reason kept in `story.json`, so a reader sees
-only what the footage supports and anyone auditing can see what was thrown away.
-
-That is the difference between a story about an event and a story that merely sounds like one: not
-that the model behaves, but that nothing reaches a reader without footage behind it. On the concert
-it kept 15 sentences, dropped none, and marked 4 as moments the clips disagreed about.
-
-`scenefold ask <event> "<question>"` answers from the same store, cited the same way — and says
-so when it cannot:
-
-```
-$ scenefold ask coldplay-jan26 "what were the crowd doing with their lights?"
-They used the lights to form thousands of glowing dots, seen from above. (the clips disagree here)
-  at 3:18.9, from 34b92d86, 60780912, eae777b3
-
-$ scenefold ask coldplay-jan26 "was anybody hurt in the crowd?"
-The footage does not show this.
-```
-
-**What this cannot check**: whether a sentence that cites a real moment describes it truthfully. A
-model can cite correctly and still embroider. That needs a person watching footage they know.
-
-## Who is who across angles
-
-`scenefold people <event>` asks the model, once every ten seconds, who it can make out in each clip
-and what they are wearing. `scenefold identify <event>` then joins those sightings up: first within
-a clip, so the red top in one window and the red top in the next are one person, then across clips
-on the shared clock, so the red top one phone filmed from the left is the red top another filmed
-from the right.
-
-Both joins are the same problem — a set of people here, a set there, at most one of each can be the
-other — and both are solved by optimal assignment rather than by taking the best-looking pair first.
-Two descriptions are scored on the colour-and-garment pairs in them ("red sleeveless top" → red top,
-sleeveless top), because those are what separate one person from the next; bare colours count for a
-quarter, since at a lit concert everybody is partly black.
-
-Three things it refuses to do:
-
-- **Force a match.** Somebody only one phone filmed stays one person seen from one angle. That is
-  the common case at a real event, not a failure.
-- **Pretend to be sure.** A join the words only half support is reported as worth checking.
-- **Match on nothing.** "A person", "dark clothing", "dark jeans" pick out half the event, so a
-  sighting described that way is dropped before any matching happens.
-
-**The failure to know about.** Where people are too small to make out, the model does not say so.
-It stops describing people and starts producing a stock answer — one plausible concert-goer, over
-and over — and because the repeats are identical, they match each other across angles and come out
-marked beyond doubt. Six angles of a stage gave 137 different outfits and 3.8 people a look, and
-the commonest outfit was 12% of the sightings. Five angles of a stadium at night gave 19 outfits
-and 1.4 people a look, with 56% of the sightings being one invented red top. `scenefold identify`
-prints those numbers every time, and says plainly when one description has taken over the event:
-
-```
-Behind it: 136 sightings, 19 different outfits, 1.45 people described per look
-  Doubt this: 56% of the sightings are the same outfit (red sleeveless top, black trousers).
-  Where people are too small to make out, the model stops describing them and repeats one
-  plausible person, and those repeats match each other across angles perfectly well.
-```
-
-**Other known limits.** This reads clothing out of a small model's words, not out of the pixels.
-Two people really can wear the same black t-shirt, and no description will ever separate them.
-Accuracy on real footage is not yet measured: that needs an event where who is who is known, which
-is the same hand-labelled event the observations are waiting on. Having the model referee its own
-doubtful matches was tried and dropped — across three framings of the question its answers swung
-between never rejecting a pair and rejecting nearly all of them, so the matches rest on the words
-and on an honest "worth checking".
-
-## What the cut does
-
-`scenefold cut <event>` edits the angles into one film. It judges each second of each clip on three
-things a camera can be wrong about — how much detail the picture holds, how far the whole frame
-shifts (a phone being waved about, or a fast pan) and how much is crushed black or blown white —
-and scores them against the other angles of the same event.
-
-That is everything a camera can be wrong about and nothing about what it was pointed at, so the cut
-also reads the event store: how much happened in each second, weighted by how many phones caught it,
-and how much of that each angle has evidence for. A clip that was filming but reported nothing was
-pointed somewhere else. The two are added together, so an angle wins a moment by having both seen it
-and been worth looking at — and a cut across a moment costs more than one on the quiet in front of
-it, which is where an editor would put it.
-
-Those scores are weighed against three rules an editor would recognise: hold a shot for at least a
-few seconds, don't cut unless the new angle is clearly better, and don't bounce straight back to
-the angle you just left. Every way the film could be built is weighed at once, so the result is the
-best *sequence of shots*, not the best angle second by second.
-
-- The sound comes from one microphone and runs unbroken: the longest clip, and of equally long
-  ones the nearest to the stage, because its sound is the least delayed. The film lasts exactly as
-  long as that clip was recording.
-- Pictures are lined up on the event, not on when each phone heard it, so a cut never jumps in time.
-- `cut.json` records every shot with the reason it was chosen, and `cut.mp4` is the film.
-  `--plan-only` writes the shot list without rendering.
-
-On the concert, that reads as a shot list a person could argue with:
-
-```
-     0.0-  59.0 s  Dharm Bharodiya      the only angle recording
-    59.0- 158.0 s  Somnath Das          caught what was happening, and had the better picture of those that did
-   158.0- 228.0 s  Gareth Sequeira      steadiest picture of the angles recording
-   228.0- 235.0 s  Dharm Bharodiya      kept rolling: cutting away would have cost more than it gained
-   ...
-   283.0- 289.0 s  Adrit Girish         caught what was happening, which the other angles missed
-```
-
-Knowing what happened turned 13 shots into 10 and moved 21 seconds between angles. On the drawn demo
-event it changes nothing at all, and that is right: every clip films the same show, so every angle
-saw everything (shares of 0.92–0.95, against 0.16–0.75 on real phones pointed different ways).
-
-**Known limits.** Footage outside the microphone clip's span isn't used — the price of never cutting
-the sound. What the cut knows about "what happened" is only as good as the event store behind it,
-which is built on a small model's descriptions; that is why being pointed at the moment is worth
-half of what the picture is worth, and never more. An event with no store yet is cut on the picture
-alone, exactly as before.
-
-## What observing does
-
-`scenefold observe <event>` asks a model what each clip shows, a few seconds at a time, and writes
-it to `observations/<clip_id>.json` — times in that clip's own seconds, so re-running sync never
-invalidates them.
-
-- **It runs on your computer.** The default is `qwen3.5:4b` through [Ollama](https://ollama.com):
-  about 3 seconds per window on a laptop GPU, no cost, and no footage leaves the machine. That
-  matters, because most footage is of people who agreed to be filmed by a friend, not to be
-  uploaded to anyone's API. Any other model is one small class (`observe.Watcher`).
-- **Each clip is watched alone**, so two angles of one moment stay two independent witnesses. A
-  disagreement between them only means something if neither account was written with the other in
-  view.
-- **Nothing is taken as true.** Each observation is kept with a reason to doubt it: how good the
-  picture was over that window, which model said it, and when. Small models are confident about
-  everything, so their self-rated confidence is not recorded — the picture score is.
-- Running it again costs nothing: clips already watched with the same model and the same question
-  are left alone (`--again` overrides).
-
-It also **listens**, if you install the speech extra. Whisper writes down what was said with a time
-for every word, which is what later phases need to find the moment somebody said something.
-
-- Whisper fills silence with whatever it expects to hear, so speech is only kept where a voice was
-  actually detected. On twenty minutes of concert footage it kept one short line — the music did
-  not become pages of invented lyrics. On a spoken test clip it caught every word, each timed.
-- It uses your graphics card if NVIDIA's maths libraries are installed, and the processor if not:
-  a missing library makes the run slower, never failed.
-- Watching and listening are cached apart, so adding speech later doesn't re-watch the pictures.
-
-It also finds the **moments** in each clip by arithmetic alone — when the sound suddenly grows (a
-clap, a hit, a cheer starting) and when the picture suddenly changes (a flash, a light cue). A
-model watching ten seconds can say *what* happened but not *when* inside them; an onset can be
-placed to a few hundredths of a second without understanding anything. So each description is
-pulled onto the moment that stands out most inside its window, and each spoken line onto the sound
-that starts it. On the concert clips, 77 of 91 windows ended up with an exact time; a window
-described as "bright blue lights and a crane structure" now points at 18.34 s rather than
-"somewhere in 12–24 s". Where nothing stands out, the coarse time is kept rather than invented.
-
-```sh
-uv run scenefold observe my-event            # needs `ollama pull qwen3.5:4b` once
-uv sync --extra speech                       # once, if you want speech as well
-uv run scenefold observe my-event --speech-model small
-```
-
-## Requirements
-
-- [uv](https://docs.astral.sh/uv/), which also installs Python 3.13 for the project.
-- [FFmpeg](https://ffmpeg.org/) with `ffprobe`, on your PATH. Version 7 or newer is recommended;
-  Scenefold is developed and tested with FFmpeg 9.0. The test suite needs at least FFmpeg 6.0.
-  Converting HDR videos needs the `zscale` filter (FFmpeg built with libzimg).
-
-## Install
+FFmpeg 7 or newer is recommended; Scenefold is developed and tested with 9.0, and the test suite
+needs at least 6.0. Converting HDR videos needs FFmpeg's `zscale` filter (built with libzimg).
 
 **Windows**
 
@@ -372,8 +145,7 @@ brew install uv ffmpeg-full
 echo 'export PATH="$(brew --prefix ffmpeg-full)/bin:$PATH"' >> ~/.zshrc
 ```
 
-Homebrew's smaller `ffmpeg` formula also works, but it has no `zscale`, so HDR videos keep
-washed-out colors and ingest marks them with a warning.
+Homebrew's smaller `ffmpeg` has no `zscale`, so HDR videos keep washed-out colours and ingest says so.
 
 **Linux (Debian, Ubuntu)**
 
@@ -382,251 +154,97 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 sudo apt install ffmpeg
 ```
 
-Ubuntu 24.04 ships FFmpeg 6.1, which is older than the version Scenefold is tested with.
+Ubuntu 24.04 ships FFmpeg 6.1, older than the version Scenefold is tested with.
 
-Open a new terminal, check that `uv --version` and `ffmpeg -version` both work, then get the code:
+Open a new terminal, check `uv --version` and `ffmpeg -version`, then clone the repo and run `uv sync`.
+</details>
 
-```sh
-git clone https://github.com/karthi-ai-engineer/SceneFold.git
-cd SceneFold
-uv sync
-```
-
-## Quick start
+<details>
+<summary><b>All commands</b></summary>
 
 ```sh
-uv run scenefold ingest my-event path/to/videos
+scenefold ingest <event> <videos or folders>   # originals kept read-only; working copies + manifest
+scenefold sync <event>                         # one clock for every clip → timeline.json
+scenefold sync <event> --sound-only            # skip the picture pass (distances); faster
+scenefold evaluate <event> <truth.json>        # sync error against moments you timed yourself
+scenefold observe <event>                      # what each clip shows and says (local model)
+scenefold people <event>                       # who each clip can see, and what they wear
+scenefold identify <event>                     # who is the same person across angles
+scenefold fuse <event>                         # merge the clips into knowledge.sqlite
+scenefold story <event>                        # a cited account → story.json
+scenefold ask <event> "<question>"             # answered from the store, with citations
+scenefold cut <event>                          # the shot list and cut.mp4
+scenefold view <event>                         # the synced viewer, at 127.0.0.1:8765
 ```
 
+An event lives in one folder: originals, working copies, and one file per stage.
+
 ```
-[1/2] IMG_4821.MOV ... added: ok (clip cd0df451e898, 10.0 s, 720x1280)
-[2/2] VID_20260917_153012.mp4 ... added: ok (clip 9605c47daf16, 30.0 s, 1280x720)
-
-Summary: 2 added
-Manifest: data/my-event/manifest.json
+data/<event>/
+├─ originals/          your videos, untouched and read-only
+├─ proxies/            working copies (.mp4) and their sound (.wav)
+├─ manifest.json       what each clip is, and any problems      (ingest)
+├─ timeline.json       where each clip sits on the shared clock (sync)
+├─ observations/       what each clip shows                     (observe)
+├─ knowledge.sqlite    events, evidence, disagreements          (fuse)
+├─ story.json          the cited account                        (story)
+└─ cut.json, cut.mp4   the shot list and the film               (cut)
 ```
+</details>
 
-Run the same command again and finished clips show `unchanged`. Event names use letters, digits,
-`-` and `_`. Use `--data-dir` to keep events somewhere other than `./data`.
-
-No videos to hand? `uv run python tools/demo_event.py` draws the imaginary show from the picture
-above — four clips that start at different times, frame different parts of it, and run on their own
-clocks — then ingests and syncs them, ready for `uv run scenefold view demo`.
+<details>
+<summary><b>Development</b></summary>
 
 ```sh
-uv run scenefold sync my-event
+uv run pytest                                                    # tests; they draw their own videos
+uv run ruff format src tests tools && uv run ruff check src tests tools
+node --test web/tests/sync.test.mjs                              # the viewer's timing rules
+uv run --with playwright python tools/check_viewer.py my-event   # viewer sync, headless Chrome
+uv run python tools/demo_event.py                                # the imaginary event above
 ```
 
-```
-Event my-event: 2 of 2 clips on one clock (master timeline 30.0 s)
-  VID_20260917_153012.mp4      +0.000 s    30.0 s  confidence 12.4
-  IMG_4821.MOV                +18.480 s    10.0 s  confidence 12.4
-Pairs: 1 measured, 1 used
-Timeline: data/my-event/timeline.json
-```
-
-A clip's offset is where its first frame sits on the shared clock. When two clips overlap for about
-30 seconds or more, each line also shows the clip's clock drift.
-
-### Checking sync with claps
-
-Film a few sharp claps that every phone hears, near the start and the end. Find each clap's time in
-every clip, for example by stepping frame by frame through the working copies in
-`data/<event>/proxies/`, and write them down:
-
-```json
-{"moments": [
-  {"label": "first clap", "times": {"VID_20260917_153012.mp4": 19.100, "IMG_4821.MOV": 0.620}},
-  {"label": "last clap",  "times": {"VID_20260917_153012.mp4": 28.233, "IMG_4821.MOV": 9.753}}
-]}
-```
-
-```sh
-uv run scenefold evaluate my-event claps.json
-```
-
-Clips are named by file name, or by clip ID when two files share a name.
-
-### Understanding what happened
-
-Everything so far works on sound and pixels alone. The next three steps need a model, running on
-your own computer through [Ollama](https://ollama.com) — no account, no upload, no cost:
-
-```sh
-ollama pull qwen3.5:4b
-uv run scenefold observe my-event     # what each clip shows, and what was said in it
-uv run scenefold fuse my-event        # the same moment seen by several phones becomes one event
-uv run scenefold story my-event       # a short account, every sentence citing the footage
-```
-
-Really from the concert, shortened here only by cutting whole sentences:
+Every push runs the lot on Windows, macOS and Linux. Project layout:
 
 ```
-What happened at coldplay-jan26, as the footage has it:
-
-  0:48.6  A lone performer stands on a stage while a massive audience holds up thousands of
-          red lights [1].
-          from 34b92d86
-  1:15.3  A large concert is taking place at night with a massive crowd holding up glowing
-          lights [1].
-          from 34b92d86, f098e4bb
-  2:48.2  A performer stands on a circular stage while a massive audience holds up numerous
-          red lights creating a dense field of light that occasionally dims, though one
-          camera caught nothing here [1]. (the clips disagree here)
-          from 34b92d86, 60780912
-
-Story: data/coldplay-jan26/story.json
-```
-
-Each clip is watched **on its own** — one clip, a few seconds at a time — so two angles stay two
-independent witnesses, and a moment several of them caught means something. Every sentence is
-checked in code, not by the model: the moment it cites has to exist, and a clip that saw it has to
-have been filming then. Sentences that fail are dropped, with the reason kept.
-
-Then ask it things:
-
-```sh
-uv run scenefold ask my-event "what were the crowd doing with their lights?"
-```
-
-```
-They used the lights to form thousands of glowing dots, seen from above. (the clips disagree here)
-  at 3:18.9, from 34b92d86, 60780912, eae777b3
-```
-
-It says "The footage does not show this" rather than guessing, which is the point of asking it at
-all.
-
-Optionally, who was there and which angles caught them:
-
-```sh
-uv run scenefold people my-event      # who each clip can see, and what they are wearing
-uv run scenefold identify my-event    # who is the same person across the angles
-```
-
-Read [Who is who across angles](#who-is-who-across-angles) before trusting this one: it works where
-people are large and lit, and invents them where they are not — and it says which it thinks it is
-looking at.
-
-### Making the film
-
-```sh
-uv run scenefold cut my-event
-```
-
-Really from the concert, with the uploaders' names shortened to fit:
-
-```
-Film of coldplay-jan26: 10 shots, 5:08.0 long, sound from Dharm (recorded longest, so its
-sound covers the most of the event)
-     0.0-  59.0 s  Dharm     the only angle recording
-    59.0- 158.0 s  Somnath   caught what was happening, and had the better picture of those that did
-   158.0- 228.0 s  Gareth    steadiest picture of the angles recording
-   228.0- 235.0 s  Dharm     kept rolling: cutting away would have cost more than it gained
-   235.0- 246.0 s  Jyoti     steadiest picture of the angles recording
-   246.0- 256.0 s  Gareth    caught what was happening, and had the better picture of those that did
-   256.0- 266.0 s  Dharm     sharpest picture of the angles recording
-   266.0- 283.0 s  Gareth    sharpest picture of the angles recording
-   283.0- 289.0 s  Adrit     caught what was happening, which the other angles missed
-   289.0- 308.0 s  Jyoti     best exposed of the angles recording
-Shots: data/coldplay-jan26/cut.json
-Film: data/coldplay-jan26/cut.mp4
-```
-
-Every shot carries the reason it was chosen, so the film is something you can argue with rather
-than something you have to take on trust.
-
-### Watching the clips together
-
-```sh
-uv run scenefold view my-event
-```
-
-This opens the viewer in your browser (served from your own computer only, `http://127.0.0.1:8765`).
-Every placed clip plays at once, lined up on the shared clock; clips that weren't recording at that
-moment say when they start or that they stopped.
-
-- **Space** plays or pauses; **←/→** jump 5 seconds; **, and .** step one frame; **1–9** pick whose
-  sound you hear. Click or drag the lanes under the videos to jump anywhere. 0.25× and 0.5× help
-  when checking a clap frame by frame.
-- **Line up** chooses what the shared clock holds together: the **pictures** (what you want when
-  watching several angles, since a distant phone heard the event late) or the **sound heard**.
-- **Sync health** shows, for every frame each video shows, how far it is from where the clock wants
-  it. On real phone clips it stays within half a frame; one frame at 30 fps is 33 ms.
-- **Sync report** shows which clips were placed, how far each phone stood from the sound, every
-  pair measurement, and why any was set aside.
-
-The clock follows the clip you are listening to, so its sound is never sped up or slowed down; the
-other videos are nudged a little faster or slower to stay with it.
-
-## Development
-
-```sh
-uv run pytest                      # all tests; they generate small test videos with FFmpeg
-uv run ruff format src tests tools
-uv run ruff check src tests tools
-node --test web/tests/sync.test.mjs                               # the viewer's timing rules
-uv run --with playwright python tools/check_viewer.py my-event   # viewer sync, in headless Chrome
-uv run python tools/demo_event.py                                # an imaginary event, nobody filmed
-uv run --with playwright python tools/record_viewer.py demo      # the GIF above
-```
-
-The maintainer's clones use a commit guard that only accepts the maintainer's GitHub identity:
-
-```sh
-git config user.name "Karthi AI Engineer"
-git config user.email "296384397+karthi-ai-engineer@users.noreply.github.com"
-git config core.hooksPath .githooks
-```
-
-## Project layout
-
-```
-src/scenefold/   pipeline code: cli, ingest, media (FFmpeg), manifest and timeline (data formats),
-                 audio_offset and picture_offset (matching clips by sound and by light), sync,
-                 evaluate (sync error), quality and cut (the film), observe and observations
-                 (what each clip shows), view (server)
-tests/           tests
-tools/           developer scripts, e.g. fetching a public dataset to measure sync on real footage
-web/             the viewer: plain HTML, CSS and JavaScript modules, no build step
-docs/            project brief and roadmap
+src/scenefold/   the pipeline: ingest, sync, observe, fuse, story, cut, view, and their data formats
+web/             the viewer: plain HTML, CSS and JavaScript, no build step
+tools/           developer scripts: public dataset, demo event, viewer checks, baselines
+tests/  docs/    tests; brief, roadmap, and how it works
 data/            your events; never committed
 ```
+</details>
 
 ## Responsible use
 
-- Only use footage from people who agreed to be filmed.
-- Scenefold never modifies your original files; it works on copies.
-- Working copies have location and device metadata removed.
-- `scenefold people` writes down what people are wearing, so that the same person can be found in
-  another angle. It is clothing, what they are doing, and roughly where they stand — never faces,
-  never names, never anything measured off a body, and the model is told to refuse a name even
-  when one is written on the picture. It stays in `data/<event>/`, on your machine, with the
-  footage. It is meant to join two angles of one afternoon, not to identify a stranger, and it
-  should be deleted with the event.
-- Everything runs on your own machine; nothing is uploaded. If a cloud model is ever offered, it
-  will be a clear choice and face blurring will come first.
+- **Only footage from people who agreed to be filmed.**
+- **Your originals are never modified**, and working copies have location and device metadata removed.
+- **Nothing is uploaded.** If a cloud model is ever offered, it will be a clear choice, and face
+  blurring will come first.
+- **`scenefold people` describes clothing, actions and rough position** so one person can be found in
+  another angle — never faces, never names, nothing measured off a body. It stays with the footage on
+  your machine, and should be deleted with the event. It is for joining two angles of one afternoon,
+  not for identifying a stranger.
 
 ### The test event this project still needs
 
-Three of the measurements above are missing for one reason: checking them needs somebody who
-already knows what happened. If you want to help, or to satisfy yourself that any of this works,
-film one:
+Three of the measurements above are missing for one reason: checking them needs somebody who already
+knows what happened. If you want to help, film one:
 
-- **Three to five friends**, each filming the same twenty minutes on their own phone, starting and
-  stopping whenever they like. Everyone agrees to be filmed, and agrees to the footage being used
-  this way.
-- **Clothes that tell people apart** — not five people in black t-shirts, which is the one case no
-  description can ever separate.
+- **Three to five friends**, filming the same twenty minutes on their own phones, starting and
+  stopping whenever they like, everyone agreeing to be filmed and to the footage being used this way.
+- **Clothes that tell people apart** — not five people in black t-shirts, the one case no description
+  can separate.
 - **A few claps** at the start, middle and end, loud enough for every phone. Those are the moments
-  sync is scored against.
-- **Write down what happened** as you go: a few timestamps and a sentence each. That list is what
-  the account gets checked against.
+  sync gets scored against.
+- **Write down what happened** as you go: a few times and a sentence each. That is what the account
+  gets checked against.
 
 Then run the chain and compare. That answers whether the story is faithful, whether the flagged
-disagreements are real, and whether the people matched across angles are the right people — and it
-gives this README a demo of people who chose to be in it.
+disagreements are real, and whether the people matched across angles are the right people.
 
-## License
+---
+
+**Docs:** [How it works](docs/HOW_IT_WORKS.md) · [Roadmap and results](docs/ROADMAP.md) ·
+[Project brief](docs/PROJECT_BRIEF.md) · [Related work](docs/RELATED_WORK.md)
 
 Copyright 2026 Karthi AI Engineer. Licensed under the [Apache License 2.0](LICENSE).
