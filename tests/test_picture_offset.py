@@ -5,7 +5,7 @@ import pytest
 import synth
 
 from scenefold import picture_offset
-from scenefold.picture_offset import PictureMatch, match_pictures, metres, solve_delays
+from scenefold.picture_offset import FPS, PictureMatch, match_pictures, metres, solve_delays
 
 FRAME_S = 1 / 30
 
@@ -181,3 +181,20 @@ def test_a_real_match_still_wins_through_a_repeating_pattern():
     assert found is not None
     assert found.lag_s == pytest.approx(22.5, abs=FRAME_S)
     assert found.clearness > 4
+
+
+def test_a_picture_that_never_changes_is_refused_before_it_is_matched():
+    """A flat curve carries nothing to match, and encoding noise on two of them can line up by luck.
+
+    This is not hypothetical: the same commit passed on one machine and failed on another, because
+    the encoders left different traces of noise on a steadily lit room.
+    """
+    rng = np.random.default_rng(4)
+    flat = np.full(int(40 * FPS), 120.0)
+    noise = flat + rng.standard_normal(len(flat)) * 0.004  # what an encoder leaves behind
+
+    assert match_pictures(flat, flat.copy(), 0.0) is None
+    assert match_pictures(noise, noise + rng.standard_normal(len(flat)) * 0.004, 0.0) is None
+    # a real lighting curve, the same length, still matches
+    lit = synth.lighting(40, seed=3, fps=FPS)
+    assert match_pictures(lit, lit.copy(), 0.0) is not None
