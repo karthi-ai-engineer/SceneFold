@@ -721,7 +721,7 @@ until version 2 replaces it.
 | Candidate | Why | From |
 |---|---|---|
 | **Anyone can install it** — PyPI package, `web/` and the demo inside it, `scenefold doctor`, optional FFmpeg wheel | Today it runs only from a git checkout; nothing else reaches people | this repo |
-| **Clips with no usable sound** placed by their pictures alone | The brief's silent-CCTV case; `picture_offset.py` already measures light, but only corrects clips the sound placed | brief §13 |
+| **Clips with no usable sound** placed by their pictures alone | The brief's silent-CCTV case; `picture_offset.py` already measures light, but only corrects clips the sound placed. Researched 2026-09-25 (`RELATED_WORK.md`, "Syncing without sound"): light events can reach sub-millisecond and need no shared view; geometry reaches ~45 ms median but wants GPU hours and an unlicensed codebase; a visible clock is the only route to absolute time | brief §13 |
 | **Several groups at once** — one night, one moment, one room per group, not only the largest | Real uploads mix nights and moments; today the rest are reported, not placed | ROADMAP Phase 2 |
 | **Edited uploads** — detect cuts inside a clip and place each piece | Most footage people send has been trimmed or joined | ROADMAP Phase 2 |
 | **A cloud model option** for the understanding steps, face blurring first | A laptop without a GPU cannot run `observe`; this is the brief's own privacy-first design | brief §7, §9 |

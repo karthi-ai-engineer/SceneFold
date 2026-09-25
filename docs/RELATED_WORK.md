@@ -78,6 +78,40 @@ Pieces exist; the whole chain does not.
 | [visualsync](https://github.com/stevenlsw/visualsync) (no license) | Reference for syncing clips without audio (V2) |
 | [WikiVideo](https://arxiv.org/abs/2504.00939) | Reference for Phase 7 cited stories |
 
+## Syncing without sound (researched 2026-09-25)
+
+The question: sound only works when the phones were close enough to hear the same thing. What
+carries the timing when they weren't? Two searches, products and research. Numbers are the authors'
+own; medians and means are both quoted where they differ, because the gap is the failure tail.
+
+**The hard boundary.** Nothing places clips that never overlap in time. No method, at any price —
+only a real timestamp does. Everything below either needs a shared moment, or gives a time window
+rather than a sync point.
+
+| Signal | Accuracy | Needs | Use for Scenefold |
+|---|---|---|---|
+| **Light events** (flash, strobe, stage cue) | 0.3-0.5 ms std via rolling-shutter edges ([Šmíd & Matas](https://arxiv.org/pdf/1902.11084)); frame level for plain flashes ([Shrestha 2006](https://dl.acm.org/doi/pdf/10.1145/1291233.1291367)) | A visible light change. **No shared view needed** | Best fallback. `picture_offset.py` already reads these curves, but only within ±2 s of a sound answer |
+| **Geometry** ([VisualSync](https://arxiv.org/abs/2512.02017), NeurIPS 2025) | median 41.5 ms (CMU Panoptic) / 46.6 ms (EgoHumans), **mean 112-122 ms** | Overlapping view of the same moving thing, recoverable camera pose; 3.3 h for 15 clips on an A6000 | Accuracy ceiling, wrong shape: GPU-hours, O(N²), and the public code has **no licence file** |
+| **Learned embeddings** ([VideoSync](https://arxiv.org/abs/2506.15937), 2025; [TPL](https://arxiv.org/abs/2510.14051), ICCV 2025) | 8.7-16.5 frames (0.3-0.55 s) | Similar-looking action only | Enough to group and seed, never to cut on |
+| **Scene-clock OCR** ([SoccerNet](https://arxiv.org/pdf/1804.04527); [basketball pipeline](https://arxiv.org/html/2411.00862) 2024) | 90% of half-starts within ±2 s; clock read correctly on 93.8% of frames | A legible clock, scoreboard or burnt-in timecode | **The only route to absolute time from content.** Strong for sport and CCTV |
+| **Near-duplicate retrieval** ([FIVR-200K](https://arxiv.org/abs/1809.04094)) | mAP 0.71 (2019) to ~0.90 on FIVR-5K | Nothing shared but the scene | Grouping clips into one event or moment — not timing |
+| **Shadows and sun** ([ShadowFinder](https://github.com/bellingcat/ShadowFinder), pip; SunCalc) | a time window, not a moment | A shadow and a known place | Advisory metadata, human in the loop |
+| **Content geolocation** ([GeoCLIP](https://github.com/VicenteVivan/geo-clip), MIT, pip) | 14.1% within 1 km, 34.5% within 25 km | — | Advisory only |
+| **VLMs ordering events across videos** ([CrossVid](https://arxiv.org/abs/2511.12263) AAAI 2026; [SYNCR](https://arxiv.org/abs/2605.08412); [CVBench](https://arxiv.org/abs/2508.19542)) | 50-58% overall vs humans ~89%; **13.4%** on step alignment | — | Cannot be trusted to order clips unsupervised |
+
+**What products do when sound sync fails: nothing content-based.** Editors fall back to timecode,
+matched in/out points, or a human picking a visual cue. Forensic tools (Amped FIVE, CrimeTime) make
+the analyst choose the "time control source" and certify clock offsets by hand. The crowd apps that
+promised this (Vyclone, CrowdFlik) synced by device clock and GPS, never by content, and are gone.
+Investigators still hand-place clips in a 3D model.
+
+**Ground truth for testing.** CMU Panoptic (hardware-synced), MultiviewX (synthetic, exact by
+construction), our Jiku clips (real phones, audio-sample truth), and [RocSync](https://arxiv.org/abs/2511.14948)
+(2025): an open-hardware LED clock filmed in shot, 1.34 ms RMSE, for making our own.
+
+**Two warnings from the literature.** ASTRA (2026) was withdrawn by its authors; SeSyn-Net's
+published numbers were shown to be inflated by a preprocessing leak. Cite medians beside means.
+
 ## What this means for Scenefold
 
 1. **Sync is the foundation, not the novelty.** Our method matches proven research, so measure it
